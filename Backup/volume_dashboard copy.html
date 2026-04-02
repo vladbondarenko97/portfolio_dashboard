@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Volume Flow Dashboard</title>
+    <style>
+        :root {
+            --bg-color: #0b0c10;
+            --card-bg: #1f2833;
+            --text-main: #c5c6c7;
+            --accent-blue: #66fcf1;
+            --accent-teal: #45a29e;
+            --buy-color: #4CAF50;
+            --sell-color: #F44336;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 40px 20px;
+        }
+        .header { text-align: center; margin-bottom: 50px; }
+        .header h1 { color: var(--accent-blue); font-size: 2.5rem; letter-spacing: 2px; margin: 0; }
+        .header p { color: var(--accent-teal); font-size: 1.1rem; margin-top: 10px; }
+        
+        .grid-container {
+            max-width: 1800px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+        }
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            padding: 30px;
+            border: 1px solid rgba(102, 252, 241, 0.1);
+        }
+        .card h2 {
+            color: #fff;
+            border-bottom: 2px solid var(--accent-teal);
+            padding-bottom: 10px;
+            display: inline-block;
+            margin-top: 0;
+        }
+        .signal-box {
+            background-color: rgba(0, 0, 0, 0.2);
+            border-left: 4px solid var(--accent-blue);
+            padding: 15px 20px;
+            border-radius: 0 8px 8px 0;
+            margin-top: 20px;
+        }
+        .buy { color: var(--buy-color); font-weight: bold; }
+        .sell { color: var(--sell-color); font-weight: bold; }
+        
+        /* NEW: DUAL CHART FLEXBOX LAYOUT */
+        .chart-comparison {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+        .chart-box {
+            flex: 1;
+            background-color: #111;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #333;
+        }
+        .chart-box h3 {
+            text-align: center;
+            color: var(--accent-teal);
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+        .chart-box img {
+            width: 100%;
+            border-radius: 6px;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Volume Flow Dashboard</h1>
+        <p>Dual-Horizon Institutional Matrix for SPY and SLV</p>
+    </div>
+    <div class="grid-container">
+
+        <div style="display: flex; flex-wrap: wrap; gap: 40px; justify-content: center; margin-bottom: 20px;">
+            
+            <div class="card" style="flex: 2; min-width: 600px; text-align: center; margin: 0;">
+                <h2 style="border-bottom: none; margin-bottom: 15px;">Global Silver Arbitrage Matrix</h2>
+                <div style="display: flex; justify-content: space-around; flex-wrap: wrap; gap: 15px;">
+                    <div>
+                        <strong style="color: var(--accent-teal);">SLV (ETF)</strong><br>
+                        <span style="font-size: 1.5rem; color: #fff; font-weight: bold;">{{SLV_PRICE}}</span><br>
+                        <span style="color: {{SLV_COLOR}}; font-weight: bold;">{{SLV_CHANGE}}</span>
+                    </div>
+                    <div>
+                        <strong style="color: var(--accent-teal);">COMEX (SIH26)</strong><br>
+                        <span style="font-size: 1.5rem; color: #fff; font-weight: bold;">{{SIH26_PRICE}}</span><br>
+                        <span style="color: {{SIH26_COLOR}}; font-weight: bold;">{{SIH26_CHANGE}}</span>
+                    </div>
+                    <div>
+                        <strong style="color: var(--accent-blue);">Spot (Physical)</strong><br>
+                        <span style="font-size: 1.5rem; color: #fff; font-weight: bold;">{{SPOT_PRICE}}</span><br>
+                        <span style="color: {{SPOT_COLOR}}; font-weight: bold;">{{SPOT_CHANGE}}</span>
+                    </div>
+                    <div>
+                        <strong style="color: var(--accent-teal);">SHFE (Shanghai)</strong><br>
+                        <span style="font-size: 1.5rem; color: #fff; font-weight: bold;">{{SHFE_PRICE}}</span><br>
+                        <span style="color: {{SHFE_COLOR}}; font-weight: bold;">{{SHFE_CHANGE}}</span>
+                    </div>
+                </div>
+                <div style="margin-top: 20px; font-size: 0.85rem; color: #888; font-style: italic;">
+                    Spot via GoldAPI.io | COMEX via Yahoo | Prices at: {{LAST_UPDATED}}
+                </div>
+            </div>
+
+            <div class="card" style="flex: 1; min-width: 300px; text-align: center; margin: 0;">
+                <h2 style="border-bottom: none; margin-bottom: 5px;">COMEX Vaults</h2>
+                <div style="font-size: 1.4rem; line-height: 1.6;">
+                    <strong>Reg:</strong> <span style="color: var(--accent-blue);">{{REG_OZ}}</span><br>
+                    <strong>Elig:</strong> <span style="color: var(--text-main);">{{ELIG_OZ}}</span><br>
+                    <strong>Change:</strong> <span style="color: {{CHANGE_COLOR}};">{{DAILY_CHANGE}}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>COMEX Physical Silver Inventory</h2>
+            <div class="chart-comparison">
+                <div class="chart-box">
+                    <h3>Macro Trend (30 Days)</h3>
+                    <img src="chart6_comex_inventory_30d.png" alt="30 Day Inventory" style="width: 100%; border-radius: 6px; display: block;">                
+                </div>
+            </div>
+            <div class="signal-box">
+                <strong>Actionable SLV Signal:</strong>
+                If the dark blue <strong>Registered (Deliverable)</strong> inventory drops rapidly while SLV price is flat, massive physical delivery is occurring behind the scenes, creating a supply shock setup (<span class="buy">STRONG BUY</span> long-dated calls). If silver is flooding into the vault and the daily change bars are massive green, there is an oversupply (<span class="sell">SELL</span> calls).
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>S&P 500 (ES) - Macro Liquidity Gauge</h2>
+            <div class="chart-comparison">
+                <div class="chart-box">
+                    <h3>Macro Trend (30 Days)</h3>
+                    <img src="chart1_es_conviction_30d.png" alt="30 Day">
+                </div>
+                <div class="chart-box">
+                    <h3>Immediate Momentum (7 Days)</h3>
+                    <img src="chart1_es_conviction_7d.png" alt="7 Day">
+                </div>
+            </div>
+            <div class="signal-box">
+                If ES Open Interest is rising alongside a healthy stock market, liquidity is flowing (<span class="buy">BUY</span> long-dated SLV calls). If ES Open Interest collapses, the broader market is de-risking (<span class="sell">SELL</span> calls).
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Silver (SI) - Institutional Conviction</h2>
+            <div class="chart-comparison">
+                <div class="chart-box">
+                    <h3>Macro Trend (30 Days)</h3>
+                    <img src="chart2_si_conviction_30d.png" alt="30 Day">
+                </div>
+                <div class="chart-box">
+                    <h3>Immediate Momentum (7 Days)</h3>
+                    <img src="chart2_si_conviction_7d.png" alt="7 Day">
+                </div>
+            </div>
+            <div class="signal-box">
+                <span class="buy">BUY</span> long-dated calls when SLV price is rising, volume is high, AND Open Interest trends UP (new money entering). <span class="sell">SELL</span> calls when SLV price spikes but Open Interest trends DOWN (short covering fakeout).
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Silver: Smart Money vs. Dumb Money</h2>
+            <div class="chart-comparison">
+                <div class="chart-box">
+                    <h3>Macro Trend (30 Days)</h3>
+                    <img src="chart3_silver_divergence_30d.png" alt="30 Day">
+                </div>
+                <div class="chart-box">
+                    <h3>Immediate Momentum (7 Days)</h3>
+                    <img src="chart3_silver_divergence_7d.png" alt="7 Day">
+                </div>
+            </div>
+            <div class="signal-box">
+                <span class="sell">SELL</span> long-dated calls if the orange retail line spikes aggressively upward while the blue institutional line goes flat or drops. Fade the retail FOMO.
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>S&P 500 (ES) Put/Call Options Flow</h2>
+            <div class="chart-comparison">
+                <div class="chart-box">
+                    <h3>Macro Trend (30 Days)</h3>
+                    <img src="chart4_spy_options_flow_30d.png" alt="30 Day">
+                </div>
+                <div class="chart-box">
+                    <h3>Immediate Momentum (7 Days)</h3>
+                    <img src="chart4_spy_options_flow_7d.png" alt="7 Day">
+                </div>
+            </div>
+            <div class="signal-box">
+                If the Put/Call ratio is extremely elevated for several days, institutions expect a severe market shock. It is generally safer to <span class="sell">SELL</span> out-of-the-money SPY and SLV calls to generate income during volatility.
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Macro Wrecking Ball (10Y Note Yields)</h2>
+            <div class="chart-comparison">
+                <div class="chart-box">
+                    <h3>Macro Trend (30 Days)</h3>
+                    <img src="chart5_macro_10y_yields_30d.png" alt="30 Day">
+                </div>
+                <div class="chart-box">
+                    <h3>Immediate Momentum (7 Days)</h3>
+                    <img src="chart5_macro_10y_yields_7d.png" alt="7 Day">
+                </div>
+            </div>
+            <div class="signal-box">
+                <span class="sell">SELL</span> long-dated calls if 10Y Note futures volume surges and the Daily OI Change spikes (rates moving higher). <span class="buy">BUY</span> long-dated calls if bond yields are dropping.
+            </div>
+        </div>
+
+    </div>
+</body>
+</html>

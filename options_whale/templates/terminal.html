@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VladHQ | Market Terminal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="icon" href="data:,">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <header class="h-12 border-b border-zinc-800 flex items-center justify-between px-6 bg-black">
+        <div class="flex items-center gap-4">
+            <span class="font-bold tracking-tighter text-xl text-white">VLAD<span class="text-green-500">HQ</span> TERMINAL</span>
+            <div class="flex items-center gap-2 text-[10px] uppercase text-zinc-500">
+                <div id="statusDot" class="w-2 h-2 bg-red-500 rounded-full status-pulse"></div>
+                REMOTE API: <span id="apiStatus">CONNECTING...</span>
+            </div>
+        </div>
+        <div class="text-[10px] text-zinc-500 uppercase tracking-widest">
+            PC.VLAD.YT:8080 | <span id="clock" class="text-zinc-300">00:00:00</span>
+        </div>
+    </header>
+
+    <main class="flex-1 flex overflow-hidden">
+        <aside class="w-80 border-r border-zinc-800 p-6 flex flex-col gap-6 overflow-y-auto bg-black">
+            <section>
+                <h3 class="text-xs font-bold text-zinc-500 uppercase mb-4 tracking-widest">Macro Triggers</h3>
+                <div class="flex flex-col gap-2">
+                    <button onclick="triggerAction('/run')" class="btn-action w-full py-2 text-xs font-bold text-red-500 border-red-500">RE-SCAN ALL DATA</button>
+                    <button onclick="triggerPhysicalArbScan()" class="btn-action w-full py-2 text-xs font-bold text-blue-400 border-blue-500">SCAN SILVER EAGLES</button>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="runPredefined('morning')" class="btn-action py-2 text-[10px] font-bold">8:31 AM FLOW</button>
+                        <button onclick="runPredefined('evening')" class="btn-action py-2 text-[10px] font-bold">2:00 PM FLOW</button>
+                    </div>
+                </div>
+            </section>
+
+            <section class="glass-panel p-4">
+                <h3 class="text-xs font-bold text-zinc-400 uppercase mb-4 border-b border-zinc-800 pb-2">Custom Whale Hunter</h3>
+                <div class="flex flex-col gap-3">
+                    <div>
+                        <label class="text-[9px] uppercase text-zinc-600 block mb-1">Target Ticker</label>
+                        <input id="scanTicker" type="text" placeholder="TSLA" class="w-full bg-zinc-950 border border-zinc-800 px-2 py-1 text-sm text-green-400 focus:border-green-500 outline-none">
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-[9px] uppercase text-zinc-600 block mb-1">Min Vol/OI</label>
+                            <input id="scanVol" type="number" step="0.1" value="1.5" class="w-full bg-zinc-950 border border-zinc-800 px-2 py-1 text-xs">
+                        </div>
+                        <div>
+                            <label class="text-[9px] uppercase text-zinc-600 block mb-1">Max DTE</label>
+                            <input id="scanDTE" type="number" value="14" class="w-full bg-zinc-950 border border-zinc-800 px-2 py-1 text-xs">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-[9px] uppercase text-zinc-600 block mb-1">Min Premium ($)</label>
+                        <input id="scanPremium" type="number" value="100000" step="50000" class="w-full bg-zinc-950 border border-zinc-800 px-2 py-1 text-xs">
+                    </div>
+                    <button onclick="runCustomScan()" class="bg-green-600 text-black font-bold py-2 text-xs mt-2 hover:bg-white transition-all">INJECT PARAMETERS</button>
+                </div>
+            </section>
+        </aside>
+
+        <div class="flex-1 flex flex-col overflow-hidden bg-[#020202] center-display-column">
+            
+            <div id="modalBackdrop" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[9000] hidden transition-all"></div>
+
+                <div id="panelContainer" class="grid grid-cols-3 gap-4 p-4 overflow-y-auto auto-rows-[minmax(320px,auto)] flex-1 h-full">                
+                <div id="panel1" draggable="true" class="draggable-panel flex flex-col border border-zinc-900 rounded bg-black overflow-hidden transition-all duration-300">
+                    <div class="bg-zinc-900/30 px-3 py-1 text-[9px] flex justify-between items-center cursor-move">
+                        <span>MACRO RISK INDEX (VMRI)</span>
+                        <div class="flex gap-3 items-center">
+                            <div class="flex items-center gap-1 bg-zinc-950 border border-zinc-800 px-1 rounded text-[10px]">
+                                <button onclick="zoomPanel('panel1', -0.1)" class="hover:text-blue-400 px-1 font-bold">-</button>
+                                <span class="text-zinc-700">|</span>
+                                <button onclick="zoomPanel('panel1', 0.1)" class="hover:text-blue-400 px-1 font-bold">+</button>
+                            </div>
+                            <button onclick="refreshFrame('vmriFrame')" class="hover:text-white">REFRESH</button>
+                            <button onclick="toggleFullscreen('panel1')" class="btn-maximize hover:text-blue-400 font-bold">[MAX]</button>
+                        </div>
+                    </div>
+                    <div class="flex-1 overflow-hidden relative">
+                        <iframe id="vmriFrame" src="http://pc.vlad.yt:8080/vmri_chart" scrolling="no" class="zoomable absolute top-0 left-0 w-full h-full border-none pointer-events-auto"></iframe>
+                    </div>
+                </div>
+
+                <div id="panel2" draggable="true" class="draggable-panel flex flex-col border border-zinc-900 rounded bg-black overflow-hidden transition-all duration-300">
+                    <div class="bg-zinc-900/30 px-3 py-1 text-[9px] flex justify-between items-center cursor-move">
+                        <span>COMEX PHYSICAL INVENTORY</span>
+                        <div class="flex gap-3 items-center">
+                            <div class="flex items-center gap-1 bg-zinc-950 border border-zinc-800 px-1 rounded text-[10px]">
+                                <button onclick="zoomPanel('panel2', -0.1)" class="hover:text-blue-400 px-1 font-bold">-</button>
+                                <span class="text-zinc-700">|</span>
+                                <button onclick="zoomPanel('panel2', 0.1)" class="hover:text-blue-400 px-1 font-bold">+</button>
+                            </div>
+                            <button onclick="refreshFrame('comexFrame')" class="hover:text-white">REFRESH</button>
+                            <button onclick="toggleFullscreen('panel2')" class="btn-maximize hover:text-blue-400 font-bold">[MAX]</button>
+                        </div>
+                    </div>
+                    <div class="flex-1 overflow-hidden flex flex-col">
+                        <iframe id="comexFrame" src="http://pc.vlad.yt:8080/inventory_chart" scrolling="no" class="zoomable flex-1 w-full border-none pointer-events-auto"></iframe>
+                    </div>
+                </div>
+
+                <div id="panel3" draggable="true" class="draggable-panel flex flex-col border border-red-900/50 rounded bg-black overflow-hidden shadow-[0_0_15px_rgba(153,27,27,0.2)] transition-all duration-300">
+                    <div class="bg-red-950/30 px-3 py-1 text-[9px] flex justify-between border-b border-red-900/30 cursor-move">
+                        <span class="text-red-500 font-bold tracking-widest">WAR ROOM: SCENARIO ENGINE</span>
+                        <div class="flex gap-3 items-center">
+                            <div class="flex items-center gap-1 bg-zinc-950 border border-zinc-800 px-1 rounded text-[10px]">
+                                <button onclick="zoomPanel('panel3', -0.1)" class="hover:text-blue-400 px-1 font-bold">-</button>
+                                <span class="text-zinc-700">|</span>
+                                <button onclick="zoomPanel('panel3', 0.1)" class="hover:text-blue-400 px-1 font-bold">+</button>
+                            </div>
+                            <span id="warStatus" class="text-zinc-500">AWAITING INPUT...</span>
+                            <button onclick="toggleFullscreen('panel3')" class="btn-maximize hover:text-blue-400 font-bold text-zinc-400">[MAX]</button>
+                        </div>
+                    </div>
+                    
+                    <div class="zoomable origin-top-left transition-transform duration-200 flex-1 p-3 flex gap-4 cursor-default relative">
+                        <div class="flex-1 flex flex-col gap-2 justify-between">
+                            <div class="bg-zinc-950 border border-zinc-800 rounded p-2 relative">
+                                <div class="text-[8px] text-zinc-500 uppercase absolute top-1 left-2 tracking-widest">Probability Distribution</div>
+                                <canvas id="bellCurve" width="250" height="40" class="w-full mt-3"></canvas>
+                                <div id="deltaAnalysis" class="text-[8px] text-blue-400 mt-1 leading-tight border-t border-zinc-800 pt-1 font-mono">
+                                    AWAITING IMPACT CALCULATION...
+                                </div>
+                            </div>
+
+                            <div class="flex flex-col gap-1.5 mt-1">
+                                <div class="slider-group">
+                                    <div class="flex justify-between text-[9px] mb-0.5">
+                                        <span class="text-zinc-400 relative group cursor-help w-fit">
+                                            <span class="border-b border-dashed border-zinc-600 pb-[1px]">DXY <span id="baseDxyTxt" class="text-zinc-600">(--)</span></span>
+                                            <div class="absolute left-0 top-full mt-2 hidden group-hover:block w-52 bg-zinc-900 border border-zinc-700 p-2 rounded shadow-xl z-[100]">
+                                                <div class="text-white font-bold text-[10px]">US Dollar Index</div>
+                                                <div class="text-zinc-400 text-[8px]">Measures USD strength against major peers.</div>
+                                            </div>
+                                        </span>
+                                        <span id="valDxy" class="text-white">+0.00</span>
+                                    </div>
+                                    <input type="range" id="shiftDxy" min="-20" max="20" step="0.5" value="0" class="war-slider">
+                                </div>
+                                <div class="slider-group">
+                                    <div class="flex justify-between text-[9px] mb-0.5">
+                                        <span class="text-zinc-400 relative group cursor-help w-fit">
+                                            <span class="border-b border-dashed border-zinc-600 pb-[1px]">10Y YLD <span id="baseTnxTxt" class="text-zinc-600">(--)</span></span>
+                                            <div class="absolute left-0 top-full mt-2 hidden group-hover:block w-52 bg-zinc-900 border border-zinc-700 p-2 rounded shadow-xl z-[100]">
+                                                <div class="text-white font-bold text-[10px]">10-Year Treasury Yield</div>
+                                                <div class="text-zinc-400 text-[8px]">Benchmarks global borrowing costs.</div>
+                                            </div>
+                                        </span>
+                                        <span id="valTnx" class="text-white">+0.00%</span>
+                                    </div>
+                                    <input type="range" id="shiftTnx" min="-3" max="3" step="0.1" value="0" class="war-slider">
+                                </div>
+                                <div class="slider-group">
+                                    <div class="flex justify-between text-[9px] mb-0.5">
+                                        <span class="text-zinc-400 relative group cursor-help w-fit">
+                                            <span class="border-b border-dashed border-zinc-600 pb-[1px]">HY OAS <span id="baseOasTxt" class="text-zinc-600">(--)</span></span>
+                                            <div class="absolute left-0 bottom-full mb-2 hidden group-hover:block w-52 bg-zinc-900 border border-zinc-700 p-2 rounded shadow-xl z-[100]">
+                                                <div class="text-white font-bold text-[10px]">High Yield OAS</div>
+                                                <div class="text-zinc-400 text-[8px]">Credit spread risk premium.</div>
+                                            </div>
+                                        </span>
+                                        <span id="valOas" class="text-white">+0.00</span>
+                                    </div>
+                                    <input type="range" id="shiftOas" min="-2" max="15" step="0.1" value="0" class="war-slider">
+                                </div>
+                                <div class="slider-group">
+                                    <div class="flex justify-between text-[9px] mb-0.5">
+                                        <span class="text-zinc-400 relative group cursor-help w-fit">
+                                            <span class="border-b border-dashed border-zinc-600 pb-[1px]">VIX <span id="baseVixTxt" class="text-zinc-600">(--)</span></span>
+                                            <div class="absolute left-0 bottom-full mb-2 hidden group-hover:block w-52 bg-zinc-900 border border-zinc-700 p-2 rounded shadow-xl z-[100]">
+                                                <div class="text-white font-bold text-[10px]">Volatility Index</div>
+                                                <div class="text-zinc-400 text-[8px]">The "Fear Gauge."</div>
+                                            </div>
+                                        </span>
+                                        <span id="valVix" class="text-white">+0%</span>
+                                    </div>
+                                    <input type="range" id="shiftVix" min="-50" max="300" step="5" value="0" class="war-slider">
+                                </div>
+                            </div>
+                            
+                            <div class="flex justify-between items-center mt-2 border-t border-zinc-900 pt-2">
+                                <div class="flex gap-2"> 
+                                    <div class="text-white font-bold text-[15px]">Scenarios: </div>
+                                    
+                                    <div class="relative group">
+                                        <button class="btn-preset px-2 py-1 text-[8px] font-bold hover:border-orange-500 hover:text-orange-500 transition-all">1970s</button>
+                                        <div class="absolute bottom-full left-0 mb-2 hidden group-hover:block w-52 bg-zinc-900/95 backdrop-blur-sm border border-zinc-700 p-2 rounded shadow-[0_10px_30px_rgba(0,0,0,0.8)] z-[100] pointer-events-none text-left">
+                                            <div class="text-orange-500 font-bold text-[10px] mb-1 uppercase tracking-widest">Stagflation Era</div>
+                                            <div class="text-zinc-400 text-[8px] leading-tight mb-1.5">Models a dual-shock of runaway inflation and stagnant growth. Simulates a fiat crisis driving massive physical premium expansion.</div>
+                                            <div class="text-zinc-500 text-[7px] italic border-t border-zinc-800 pt-1">Injects: DXY -15 | 10Y +3.0% | OAS +4.0 | VIX +40%</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="relative group">
+                                        <button class="btn-preset px-2 py-1 text-[8px] font-bold hover:border-red-500 hover:text-red-500 transition-all">2008</button>
+                                        <div class="absolute bottom-full left-0 mb-2 hidden group-hover:block w-52 bg-zinc-900/95 backdrop-blur-sm border border-zinc-700 p-2 rounded shadow-[0_10px_30px_rgba(0,0,0,0.8)] z-[100] pointer-events-none text-left">
+                                            <div class="text-red-500 font-bold text-[10px] mb-1 uppercase tracking-widest">Global Financial Crisis</div>
+                                            <div class="text-zinc-400 text-[8px] leading-tight mb-1.5">Models a systemic credit freeze and severe deflationary shock. Extreme high-yield spread blowout triggers massive margin-call liquidations.</div>
+                                            <div class="text-zinc-500 text-[7px] italic border-t border-zinc-800 pt-1">Injects: DXY +12 | 10Y -1.5% | OAS +15.0 | VIX +250%</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="relative group">
+                                        <button class="btn-preset px-2 py-1 text-[8px] font-bold hover:border-blue-500 hover:text-blue-500 transition-all">2020</button>
+                                        <div class="absolute bottom-full left-0 mb-2 hidden group-hover:block w-52 bg-zinc-900/95 backdrop-blur-sm border border-zinc-700 p-2 rounded shadow-[0_10px_30px_rgba(0,0,0,0.8)] z-[100] pointer-events-none text-left">
+                                            <div class="text-blue-500 font-bold text-[10px] mb-1 uppercase tracking-widest">COVID Liquidity Trap</div>
+                                            <div class="text-zinc-400 text-[8px] leading-tight mb-1.5">Models a global economic shutdown and flash-crash "Dash for Cash." Volatility spikes to historical maximums while yields collapse to the zero bound.</div>
+                                            <div class="text-zinc-500 text-[7px] italic border-t border-zinc-800 pt-1">Injects: DXY +8 | 10Y -2.5% | OAS +8.0 | VIX +300%</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="relative group">
+                                    <button id="btnResetWarRoom" class="text-[8px] text-zinc-500 hover:text-white hover:bg-zinc-900 border border-zinc-800 rounded px-3 py-1 transition-all uppercase tracking-widest font-bold">
+                                        Reset to Live
+                                    </button>
+                                    <div class="absolute bottom-full right-0 mb-2 hidden group-hover:block w-40 bg-zinc-900/95 backdrop-blur-sm border border-zinc-700 p-2 rounded shadow-[0_10px_30px_rgba(0,0,0,0.8)] z-[100] pointer-events-none text-right">
+                                        <div class="text-white font-bold text-[10px] mb-1 uppercase tracking-widest">Sync Environment</div>
+                                        <div class="text-zinc-400 text-[8px] leading-tight">Clears all scenario overlays and restores sliders to the real-time macro API feeds.</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="w-12 flex flex-col items-center justify-end pb-1">
+                            <div class="text-[8px] text-zinc-500 mb-2 font-bold tracking-widest text-center">VMRI<br>TRIPWIRE</div>
+                            <div class="gauge-container relative w-6 h-full bg-zinc-950 border border-zinc-800 rounded-full overflow-hidden flex items-end">
+                                <div id="tripwireFill" class="gauge-fill bg-green-500 transition-all duration-300 w-full" style="height: 20%;"></div>
+                                <div class="absolute w-full h-[1px] bg-yellow-500/80 bottom-[42%] z-10"></div> 
+                                <div class="absolute w-full h-[1px] bg-red-500/80 bottom-[71%] z-10"></div> 
+                            </div>
+                            <div id="warVmriScore" class="text-[10px] text-white font-bold mt-2">---</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="panel4" draggable="true" class="draggable-panel flex flex-col border border-zinc-900 rounded bg-black overflow-hidden transition-all duration-300">
+                    <div class="bg-zinc-900/30 px-3 py-1 text-[9px] flex justify-between items-center cursor-move border-b border-zinc-800/50">
+                        <span class="text-zinc-400 font-bold group relative cursor-help w-fit">
+                            <span class="border-b border-dashed border-zinc-600 pb-[1px] hover:text-white transition-colors">COMEX PAPER:PHYSICAL RATIO</span>
+                            <div class="absolute left-0 top-full mt-2 hidden group-hover:block w-56 bg-zinc-900/95 backdrop-blur-sm border border-zinc-700 p-2 rounded shadow-[0_10px_30px_rgba(0,0,0,0.8)] z-[100] pointer-events-none normal-case font-normal text-left">
+                                <div class="text-white font-bold mb-1 text-[10px] uppercase tracking-widest">Systemic Leverage</div>
+                                <div class="text-zinc-400 text-[9px] leading-tight">Measures the leverage constraint within the COMEX depository network by comparing total outstanding paper futures contracts (Open Interest) against actual registered physical silver available for delivery.</div>
+                            </div>
+                        </span>
+                        <div class="flex gap-3 items-center">
+                            <div class="flex items-center gap-1 bg-zinc-950 border border-zinc-800 px-1 rounded text-[10px]">
+                                <button onclick="zoomPanel('panel4', -0.1)" class="hover:text-blue-400 px-1 font-bold">-</button>
+                                <span class="text-zinc-700">|</span>
+                                <button onclick="zoomPanel('panel4', 0.1)" class="hover:text-blue-400 px-1 font-bold">+</button>
+                            </div>
+                            <button onclick="toggleFullscreen('panel4')" class="btn-maximize hover:text-blue-400 font-bold text-zinc-500 transition-colors">[MAX]</button>
+                        </div>
+                    </div>
+                    
+                    <div class="zoomable origin-top-left transition-transform duration-200 flex-1 p-3 pt-6 flex flex-col justify-start cursor-default relative">
+                        <div class="text-center mb-1">
+                            <div id="livePaperRatio" class="text-4xl font-bold tracking-tighter text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]">--:1</div>
+                            <div id="liveRatioStatusBanner" class="text-[9px] uppercase font-bold text-zinc-500 mt-1 tracking-widest">AWAITING DATA</div>
+                        </div>
+                        
+                        <div class="relative w-32 h-16 mx-auto mt-0 mb-0">
+                            <svg viewBox="0 0 100 50" class="w-full h-full overflow-visible">
+                                <defs>
+                                    <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                                        <stop offset="0%" stop-color="#22c55e" /> 
+                                        <stop offset="50%" stop-color="#eab308" /> 
+                                        <stop offset="100%" stop-color="#ef4444" /> 
+                                    </linearGradient>
+                                </defs>
+                                <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="#27272a" stroke-width="8" stroke-linecap="round" />
+                                <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="url(#gaugeGrad)" stroke-width="8" stroke-linecap="round" opacity="0.8" />
+                                <circle cx="50" cy="50" r="4" fill="#a1a1aa" />
+                                <line id="ratioNeedle" x1="50" y1="50" x2="50" y2="15" stroke="#f4f4f5" stroke-width="2.5" stroke-linecap="round" class="transition-transform duration-1000 ease-out drop-shadow-md" style="transform-origin: 50px 50px; transform: rotate(-90deg);" />
+                            </svg>
+                        </div>
+                        <div><br/><hr/><br/></div>
+                        <div class="bg-zinc-950 border border-zinc-800 rounded p-2 mt-1">
+                            <ul class="text-[9px] text-zinc-400 space-y-1 font-mono">
+                                <li class="flex items-start gap-2">
+                                    <span class="text-blue-500 mt-[1px]">▸</span>
+                                    <span><span id="livePaperOz" class="text-white font-bold">--</span> oz paper claims per 1 oz physical</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <span class="text-blue-500 mt-[1px]">▸</span>
+                                    <span>High leverage indicates imminent delivery risk</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <span id="ratioStatusIcon" class="text-zinc-500 mt-[1px]">▸</span>
+                                    <span id="ratioStatusText">System nominal</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="panel5" draggable="true" class="draggable-panel flex flex-col border border-zinc-500/40 rounded bg-black overflow-hidden shadow-[0_0_15px_rgba(161,161,170,0.1)] transition-all duration-300">
+                    <div class="bg-zinc-900/60 px-3 py-1 text-[9px] flex justify-between items-center cursor-move border-b border-zinc-600/50">
+                        <span class="text-zinc-300 font-bold tracking-widest flex items-center gap-2 drop-shadow-[0_0_3px_rgba(255,255,255,0.4)]">
+                            PHYSICAL ARB LEDGER
+                        </span>
+                        <div class="flex gap-2 items-center">
+                            <div class="flex items-center gap-1 bg-zinc-950 border border-zinc-800 px-1 rounded text-[10px]">
+                                <button onclick="zoomPanel('panel5', -0.1)" class="hover:text-blue-400 px-1 font-bold">-</button>
+                                <span class="text-zinc-700">|</span>
+                                <button onclick="zoomPanel('panel5', 0.1)" class="hover:text-blue-400 px-1 font-bold">+</button>
+                            </div>
+                            <button onclick="toggleFullscreen('panel5')" class="btn-maximize hover:text-blue-400 font-bold text-zinc-500 transition-colors ml-1">[MAX]</button>
+                        </div>
+                    </div>
+
+                    <div class="zoomable origin-top-left transition-transform duration-200 flex-1 p-3 flex flex-col gap-2 cursor-default relative overflow-hidden">
+                        
+                        <div class="flex justify-center gap-2 border-b border-zinc-800 pb-2 mb-1">
+                            <button onclick="renderArbChart('price')" id="btnArbPrice" class="arb-toggle active px-3 py-1 rounded-full text-[8px] font-bold border border-zinc-600 text-zinc-400 hover:text-white hover:border-zinc-300 transition-all tracking-widest uppercase">Spot vs Physical</button>
+                            <button onclick="renderArbChart('pct')" id="btnArbPct" class="arb-toggle px-3 py-1 rounded-full text-[8px] font-bold border border-zinc-600 text-zinc-400 hover:text-white hover:border-zinc-300 transition-all tracking-widest uppercase">Premium %</button>
+                            <button onclick="renderArbChart('dollar')" id="btnArbDollar" class="arb-toggle px-3 py-1 rounded-full text-[8px] font-bold border border-zinc-600 text-zinc-400 hover:text-white hover:border-zinc-300 transition-all tracking-widest uppercase">Premium $</button>
+                        </div>
+
+                        <div class="flex-1 relative w-full min-h-[100px]">
+                            <canvas id="arbChart"></canvas>
+                        </div>
+                        
+                    </div>
+                </div>
+
+                <div id="panel6" draggable="true" class="draggable-panel flex flex-col border border-blue-900/50 rounded bg-black overflow-hidden shadow-[0_0_15px_rgba(59,130,246,0.1)] transition-all duration-300">
+                    <div class="bg-blue-950/30 px-3 py-1 text-[9px] flex justify-between items-center cursor-move border-b border-blue-900/30">
+                        <span class="text-blue-400 font-bold tracking-widest flex items-center gap-2">
+                            DEALER MAP (GEX)
+                        </span>
+                        <div class="flex gap-2 items-center">
+                            <input id="gexTickerInput" type="text" placeholder="SPY" value="SPY" class="w-12 bg-zinc-950 border border-zinc-700 px-1 py-0.5 text-center text-white outline-none rounded font-bold focus:border-blue-500 transition-colors">
+                            <button onclick="loadDealerMap()" class="bg-blue-600 hover:bg-blue-400 text-white px-2 py-0.5 rounded font-bold transition-colors shadow-[0_0_10px_rgba(37,99,235,0.4)]">SCAN</button>
+                            
+                            <div class="flex items-center gap-1 bg-zinc-950 border border-zinc-800 px-1 rounded text-[10px] ml-2">
+                                <button onclick="zoomPanel('panel6', -0.1)" class="hover:text-blue-400 px-1 font-bold">-</button>
+                                <span class="text-zinc-700">|</span>
+                                <button onclick="zoomPanel('panel6', 0.1)" class="hover:text-blue-400 px-1 font-bold">+</button>
+                            </div>
+                            <button onclick="toggleFullscreen('panel6')" class="btn-maximize hover:text-blue-400 font-bold text-zinc-500 transition-colors ml-1">[MAX]</button>
+                        </div>
+                    </div>
+
+                    <div class="zoomable origin-top-left transition-transform duration-200 flex-1 p-3 flex flex-col gap-2 cursor-default relative overflow-hidden">
+                        
+                        <div class="grid grid-cols-4 gap-2 text-center border-b border-zinc-800 pb-2 mb-1 bg-zinc-950/50 rounded pt-2">
+                            <div>
+                                <div class="text-[8px] text-zinc-500 uppercase tracking-widest">Spot Price</div>
+                                <div id="gexSpot" class="text-white font-bold text-sm drop-shadow-[0_0_5px_rgba(255,255,255,0.3)]">---</div>
+                            </div>
+                            <div>
+                                <div class="text-[8px] text-zinc-500 uppercase tracking-widest" title="Vol Trigger">Zero Gamma</div>
+                                <div id="gexZero" class="text-zinc-300 font-bold text-sm">---</div>
+                            </div>
+                            <div>
+                                <div class="text-[8px] text-zinc-500 uppercase tracking-widest">Call Wall</div>
+                                <div id="gexCallWall" class="text-green-500 font-bold text-sm drop-shadow-[0_0_5px_rgba(34,197,94,0.3)]">---</div>
+                            </div>
+                            <div>
+                                <div class="text-[8px] text-zinc-500 uppercase tracking-widest">Put Wall</div>
+                                <div id="gexPutWall" class="text-red-500 font-bold text-sm drop-shadow-[0_0_5px_rgba(239,68,68,0.3)]">---</div>
+                            </div>
+                        </div>
+
+                        <div class="flex-1 relative w-full min-h-[100px]">
+                            <canvas id="gexChart"></canvas>
+                        </div>
+                        
+                    </div>
+                </div>
+
+                <div id="panel7" draggable="true" class="draggable-panel col-span-1 flex flex-col border border-purple-900/60 rounded bg-black overflow-hidden shadow-[0_0_20px_rgba(147,51,234,0.15)] transition-all duration-300 min-h-[250px]">
+    
+                    <div class="bg-purple-950/30 px-3 py-1 text-[9px] flex justify-between items-center cursor-move border-b border-purple-900/40">
+                        <span class="text-purple-400 font-bold tracking-widest flex items-center gap-2 drop-shadow-[0_0_5px_rgba(168,85,247,0.5)]">
+                            <div class="w-1.5 h-1.5 bg-purple-500 rounded-full animate-pulse"></div>
+                            DARK POOL TAPE
+                        </span>
+                        <div class="flex gap-2 items-center">
+                            <input id="dpTickerInput" type="text" placeholder="SLV" value="SLV" class="w-14 bg-zinc-950 border border-purple-900/50 px-1 py-0.5 text-center text-white outline-none rounded font-bold focus:border-purple-500 transition-colors uppercase">
+                            <button onclick="loadDarkPoolProfile()" class="bg-purple-700 hover:bg-purple-500 text-white px-3 py-0.5 rounded font-bold transition-colors shadow-[0_0_10px_rgba(147,51,234,0.4)] tracking-widest">SCAN</button>
+                            
+                            <div class="flex items-center gap-1 bg-zinc-950 border border-zinc-800 px-1 rounded text-[10px] ml-2">
+                                <button onclick="zoomPanel('panel7', -0.1)" class="hover:text-purple-400 px-1 font-bold">-</button>
+                                <span class="text-zinc-700">|</span>
+                                <button onclick="zoomPanel('panel7', 0.1)" class="hover:text-purple-400 px-1 font-bold">+</button>
+                            </div>
+                        </div>
+                    </div>
+
+                <div class="zoomable origin-top-left transition-transform duration-200 flex-1 p-3 flex flex-col gap-3 cursor-default">
+                    
+                    <div class="grid grid-cols-5 gap-3 text-center bg-zinc-950/50 border border-zinc-800/50 rounded-lg p-3">
+                        <div class="border-r border-zinc-800/50 pr-2">
+                            <div class="text-[9px] text-zinc-500 uppercase tracking-widest mb-1">VWAP Anchor</div>
+                            <div id="dpVwap" class="text-white font-mono font-bold text-xl drop-shadow-[0_0_5px_rgba(255,255,255,0.3)]">---</div>
+                        </div>
+                        <div class="border-r border-zinc-800/50 pr-2">
+                            <div class="text-[9px] text-zinc-500 uppercase tracking-widest mb-1">Notional Value</div>
+                            <div id="dpNotional" class="text-green-400 font-mono font-bold text-lg">---</div>
+                        </div>
+                        <div class="border-r border-zinc-800/50 pr-2">
+                            <div class="text-[9px] text-zinc-500 uppercase tracking-widest mb-1">Block Vol</div>
+                            <div id="dpVol" class="text-zinc-300 font-mono font-bold text-lg">---</div>
+                        </div>
+                        <div class="border-r border-zinc-800/50 pr-2">
+                            <div class="text-[9px] text-zinc-500 uppercase tracking-widest mb-1">Max Block</div>
+                            <div id="dpMax" class="text-purple-400 font-mono font-bold text-lg">---</div>
+                        </div>
+                        <div>
+                            <div class="text-[9px] text-zinc-500 uppercase tracking-widest mb-1">Bias</div>
+                            <div id="dpBias" class="text-zinc-400 font-bold text-lg tracking-widest">---</div>
+                        </div>
+                    </div>
+
+                    <div class="flex-1 bg-zinc-950 border border-zinc-800 rounded flex flex-col overflow-hidden">
+                        <div class="grid grid-cols-4 text-[9px] text-zinc-500 uppercase tracking-widest p-2 border-b border-zinc-800 bg-zinc-900/80">
+                            <div class="pl-2">Time</div>
+                            <div class="text-right">Block Size</div>
+                            <div class="text-right">Execution Price</div>
+                            <div class="text-right pr-4">Condition</div>
+                        </div>
+                        <div id="dpTapeContainer" class="flex-1 overflow-y-auto p-1 font-mono text-[11px] terminal-scroll space-y-1">
+                            </div>
+                    </div>
+                    
+                </div>
+            </div>
+
+            <div id="panel8" draggable="true" class="draggable-panel col-span-1 flex flex-col border border-purple-900/60 rounded bg-black overflow-hidden shadow-[0_0_20px_rgba(147,51,234,0.15)] transition-all duration-300 min-h-[250px]">
+    
+                <div class="bg-purple-950/30 px-3 py-1 text-[9px] flex justify-between items-center cursor-move border-b border-purple-900/40">
+                    <span class="text-purple-400 font-bold tracking-widest flex items-center gap-2">
+                        DARK POOL VISUALIZER
+                    </span>
+                    <div class="flex gap-2 items-center">
+                        <label class="text-zinc-500 text-[8px] tracking-widest uppercase flex items-center gap-1">
+                            Min Size: <span id="dpSizeFilterLabel" class="text-white font-bold">10k</span>
+                        </label>
+                        <input type="range" id="dpSizeFilter" min="10000" max="500000" step="10000" value="10000" class="w-16 accent-purple-500" oninput="updateDpChartFilter(this.value)">
+                        
+                        <div class="flex items-center gap-1 bg-zinc-950 border border-zinc-800 px-1 rounded text-[10px] ml-2">
+                            <button onclick="zoomPanel('panel8', -0.1)" class="hover:text-purple-400 px-1 font-bold">-</button>
+                            <span class="text-zinc-700">|</span>
+                            <button onclick="zoomPanel('panel8', 0.1)" class="hover:text-purple-400 px-1 font-bold">+</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="zoomable origin-top-left transition-transform duration-200 flex-1 p-3 cursor-default relative w-full h-full flex flex-col">
+                    <div class="flex-1 relative w-full min-h-[150px]">
+                        <canvas id="dpVisualizerChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            </div>
+
+            <div id="v-resizer" class="h-1 bg-zinc-900 hover:bg-blue-600 cursor-row-resize transition-colors flex items-center justify-center group">
+                <div class="w-8 h-[1px] bg-zinc-700 group-hover:bg-blue-400"></div>
+            </div>
+
+            <div id="consoleSection" class="flex-1 p-4 pt-0 min-h-[40px] transition-all duration-300 overflow-hidden">
+                <div class="h-full glass-panel flex flex-col border border-zinc-800">
+                    <div onclick="toggleConsole()" class="bg-zinc-900/50 px-4 py-2 flex justify-between items-center border-b border-zinc-800 cursor-pointer hover:bg-zinc-900 transition-colors">
+                        <span class="text-[10px] text-zinc-400 font-bold tracking-widest uppercase">Console Engine v2.0</span>
+                        <div class="flex gap-4">
+                            <button id="btnMinConsole" onclick="event.stopPropagation(); toggleConsole();" class="text-[9px] text-zinc-500 hover:text-blue-400 uppercase font-bold">[Minimize]</button>
+                            <button onclick="event.stopPropagation(); triggerAction('/dump')" class="text-[9px] text-zinc-500 hover:text-white uppercase">Data Dump</button>
+                            <button onclick="event.stopPropagation(); document.getElementById('consoleLog').innerHTML = ''" class="text-[9px] text-zinc-500 hover:text-white uppercase">Clear</button>
+                        </div>
+                    </div>
+                    <div id="consoleBody" class="flex-1 overflow-hidden flex flex-col">
+                        <div id="consoleLog" class="flex-1 p-4 text-[11px] leading-relaxed overflow-y-auto terminal-scroll text-zinc-300 font-mono">
+                            System authenticated. Ready to hunt.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

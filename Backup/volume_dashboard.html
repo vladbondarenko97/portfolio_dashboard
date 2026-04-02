@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VLADHQ Order Flow Terminal</title>
+    <style>
+        :root {
+            --bg-color: #0b0c10;
+            --card-bg: #1f2833;
+            --text-main: #c5c6c7;
+            --accent-blue: #66fcf1;
+            --accent-teal: #45a29e;
+            --buy-color: #4CAF50;
+            --sell-color: #F44336;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 40px 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+        .header h1 {
+            color: var(--accent-blue);
+            font-size: 2.5rem;
+            letter-spacing: 2px;
+            margin: 0;
+            text-transform: uppercase;
+        }
+        .header p {
+            color: var(--accent-teal);
+            font-size: 1.1rem;
+            margin-top: 10px;
+        }
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(900px, 1fr));
+            gap: 40px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            padding: 30px;
+            border: 1px solid rgba(102, 252, 241, 0.1);
+        }
+        .card img {
+            width: 100%;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            border: 1px solid #333;
+            background-color: #fff;
+        }
+        .card h2 {
+            color: #fff;
+            font-size: 1.5rem;
+            margin-top: 0;
+            margin-bottom: 15px;
+            border-bottom: 2px solid var(--accent-teal);
+            padding-bottom: 10px;
+            display: inline-block;
+        }
+        .card p {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+        .signal-box {
+            background-color: rgba(0, 0, 0, 0.2);
+            border-left: 4px solid var(--accent-blue);
+            padding: 15px 20px;
+            border-radius: 0 8px 8px 0;
+            margin-top: 20px;
+        }
+        .signal-box strong {
+            color: #fff;
+            display: block;
+            margin-bottom: 8px;
+            font-size: 1.1rem;
+        }
+        .buy { color: var(--buy-color); font-weight: bold; }
+        .sell { color: var(--sell-color); font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>VLADHQ Order Flow Terminal</h1>
+        <p>Live Institutional Matrix for SPY and SLV Operations</p>
+    </div>
+    <div class="grid-container">
+        
+        <div class="card">
+            <img src="chart1_es_conviction.png" alt="ES Conviction Chart">
+            <h2>S&P 500 (ES) - Macro Liquidity Gauge</h2>
+            <p>This chart tracks the underlying heartbeat of the broader equity market. It overlays the daily trading volume (bars) against the total Open Interest (the line) for the standard S&P 500 futures contract. Since silver often gets dragged down in severe equity margin-call events, this is your baseline risk indicator.</p>
+            <div class="signal-box">
+                <strong>Actionable SLV Signal:</strong>
+                If ES Open Interest is rising alongside a healthy stock market, liquidity is flowing, creating a safe environment to <span class="buy">BUY</span> long-dated SLV calls. If ES Open Interest collapses, <span class="sell">SELL</span> SLV calls to collect premium as the broader market de-risks.
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="chart2_si_conviction.png" alt="SI Conviction Chart">
+            <h2>Silver (SI) - Institutional Conviction</h2>
+            <p>This is the most direct metric for your SLV trades. It plots the daily Volume and Open Interest for the standard, 5,000-ounce SILVER FUTURES contract (the "Smart Money"). Open Interest tells you if new money is entering the market. If SLV is rallying but Open Interest is dropping, the rally is a fakeout (short covering).</p>
+            <div class="signal-box">
+                <strong>Actionable SLV Signal:</strong>
+                <span class="buy">BUY</span> long-dated calls when SLV price is rising, volume is high, AND the Open Interest line is trending UP. This means heavy institutional money is building long positions. <span class="sell">SELL</span> calls when SLV price spikes but Open Interest is trending DOWN or flat, indicating the rally has no structural support.
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="chart3_silver_divergence.png" alt="Silver Divergence Chart">
+            <h2>Silver: Smart Money vs. Dumb Money</h2>
+            <p>This chart normalizes and compares the Open Interest growth of the standard SILVER FUTURES (Institutions) against the MICRO SILVER FUTURES (Retail). Retail traders almost always buy at the top and panic sell at the bottom. By comparing these two lines, you can see exactly who is driving the current price action.</p>
+            <div class="signal-box">
+                <strong>Actionable SLV Signal:</strong>
+                <span class="sell">SELL</span> long-dated calls if the orange retail line spikes aggressively upward while the blue institutional line goes flat or drops. Fade the retail FOMO. <span class="buy">BUY</span> long-dated calls if the blue institutional line leads the breakout while retail is flat, meaning smart money is quietly accumulating.
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="chart4_spy_options_flow.png" alt="SPY Options Flow Chart">
+            <h2>S&P 500 (ES) Put/Call Options Flow</h2>
+            <p>This tracks the daily volume of S&P 500 Puts vs. Calls and plots the Put/Call Ratio. This is your early warning system for market fear. When the purple line spikes well above 1.0, institutions are buying massive amounts of downside protection.</p>
+            <div class="signal-box">
+                <strong>Actionable SPY/SLV Signal:</strong>
+                If the Put/Call ratio is extremely elevated for several days, institutions expect a severe market shock. It is generally safer to <span class="sell">SELL</span> out-of-the-money SPY and SLV calls to generate income during the elevated volatility rather than risking capital on directional bets.
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="chart5_macro_10y_yields.png" alt="10Y Yields Chart">
+            <h2>Macro Wrecking Ball (10Y Note Yields)</h2>
+            <p>The 10-year Treasury yield is kryptonite for precious metals. This plots the volume and daily Open Interest change for the 10Y NOTE FUTURE. When bond yields rise, the opportunity cost of holding silver increases, and institutional algorithms automatically sell metals.</p>
+            <div class="signal-box">
+                <strong>Actionable SLV Signal:</strong>
+                <span class="sell">SELL</span> long-dated calls if 10Y Note futures volume surges and the Daily OI Change spikes, meaning institutions are repositioning for higher interest rates. <span class="buy">BUY</span> long-dated calls if bond yields are dropping, removing the primary headwind for precious metals.
+            </div>
+        </div>
+
+    </div>
+</body>
+</html>
