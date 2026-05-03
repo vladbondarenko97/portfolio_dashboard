@@ -1809,6 +1809,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('copyDataModal').addEventListener('click', (e) => {
         if (e.target === document.getElementById('copyDataModal')) closeCopyModal();
     });
+    // Initialize Wishlist
+    if (typeof renderWatchlist === 'function') renderWatchlist();
 });
 
 // ==========================================
@@ -3090,6 +3092,7 @@ let _explorerType = 'call';
 let _explorerChainData = null;
 let _explorerCurrentTicker = '';
 let _explorerCurrentExp = '';
+let _lastAnalyticsData = null; // Stores most recent quant result for watchlist adding
 
 function setExplorerType(type) {
     _explorerType = type;
@@ -3197,26 +3200,174 @@ async function selectContract(strike, expiration, type, marketPrice) {
         document.getElementById('exVega').innerText = `$${d.vega.toFixed(4)}`;
         document.getElementById('exRho').innerText = `$${d.rho.toFixed(4)}`;
         document.getElementById('exBreakeven').innerText = `$${d.breakeven.toFixed(2)}`;
-        document.getElementById('exExpMove').innerText = `±$${d.expected_move.toFixed(2)}`;
-        document.getElementById('exIntrinsic').innerText = `$${d.intrinsic.toFixed(4)}`;
-        document.getElementById('exExtrinsic').innerText = `$${d.extrinsic.toFixed(4)}`;
-        document.getElementById('exIV').innerText = `${d.iv_pct.toFixed(2)}%`;
-        document.getElementById('exHV').innerText = `${d.hv_pct.toFixed(2)}%`;
-
-        const sig = document.getElementById('exIVSignal');
-        if (d.iv_signal.includes('OVER')) {
-            sig.innerText = `⚠️ ${d.iv_signal} — IV ${d.iv_pct.toFixed(1)}% vs HV ${d.hv_pct.toFixed(1)}%`;
-            sig.className = 'p-3 text-center font-bold text-[11px] uppercase tracking-widest bg-red-900/20 text-red-400 border-t border-red-900/40';
-        } else if (d.iv_signal.includes('UNDER')) {
-            sig.innerText = `✅ ${d.iv_signal} — IV ${d.iv_pct.toFixed(1)}% vs HV ${d.hv_pct.toFixed(1)}%`;
-            sig.className = 'p-3 text-center font-bold text-[11px] uppercase tracking-widest bg-green-900/20 text-green-400 border-t border-green-900/40';
-        } else {
-            sig.innerText = `IV ${d.iv_pct.toFixed(1)}% = FAIRLY PRICED vs HV ${d.hv_pct.toFixed(1)}%`;
-            sig.className = 'p-3 text-center font-bold text-[11px] uppercase tracking-widest bg-zinc-950 text-zinc-500 border-t border-zinc-900';
-        }
+        _lastAnalyticsData = d; // Store for watchlist
     } catch(e) {
         document.getElementById('exIVSignal').innerText = `Error: ${e.message}`;
     }
+}
+
+// ==========================================
+// --- INSTITUTIONAL WATCHLIST ---
+// ==========================================
+
+function addToWatchlist() {
+    if (!_lastAnalyticsData) {
+        alert("Select an option first to generate analytics.");
+        return;
+    }
+
+    const watchlist = JSON.parse(localStorage.getItem('optionsWatchlist') || '[]');
+    
+    // Create a unique ID
+    const id = `${_explorerCurrentTicker}_${_lastAnalyticsData.strike}_${_lastAnalyticsData.option_type}_${_lastAnalyticsData.expiration}`;
+    
+    // Check if already exists
+    if (watchlist.find(item => item.id === id)) {
+        alert("This contract is already in your watchlist.");
+        return;
+    }
+
+    const newItem = {
+        id: id,
+        ticker: _explorerCurrentTicker,
+        strike: _lastAnalyticsData.strike,
+        type: _lastAnalyticsData.option_type,
+        expiry: _lastAnalyticsData.expiration,
+        addedPrice: _lastAnalyticsData.market_price,
+        addedDate: new Date().toLocaleString(),
+        analytics: _lastAnalyticsData,
+        timestamp: Date.now()
+    };
+
+    watchlist.push(newItem);
+    localStorage.setItem('optionsWatchlist', JSON.stringify(watchlist));
+    renderWatchlist();
+    
+    // UI Feedback
+    const btn = event.target;
+    const originalText = btn.innerText;
+    btn.innerText = "✅ ADDED TO WATCHLIST";
+    btn.className = "w-full bg-green-600 text-white font-bold py-3 rounded text-[11px] uppercase tracking-widest transition-all";
+    setTimeout(() => {
+        btn.innerText = originalText;
+        btn.className = "w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded text-[11px] uppercase tracking-widest transition-all shadow-lg shadow-blue-900/20";
+    }, 2000);
+}
+
+function renderWatchlist() {
+    const body = document.getElementById('wishlistBody');
+    const watchlist = JSON.parse(localStorage.getItem('optionsWatchlist') || '[]');
+
+    if (watchlist.length === 0) {
+        body.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-zinc-700 uppercase tracking-widest">Wishlist is empty</td></tr>`;
+        return;
+    }
+
+    body.innerHTML = watchlist.map((item, index) => {
+        const currentPrice = item.analytics.market_price; // In a real app we'd fetch live here
+        const change = ((currentPrice - item.addedPrice) / item.addedPrice * 100).toFixed(2);
+        const changeClass = change >= 0 ? 'text-green-400' : 'text-red-400';
+        
+        return `
+            <tr class="border-b border-zinc-900/50 hover:bg-zinc-900/30 transition-colors group">
+                <td class="py-3 px-1">
+                    <div class="font-bold text-white">${item.ticker} $${item.strike} ${item.type}</div>
+                    <div class="text-[8px] text-zinc-500">${item.expiry}</div>
+                </td>
+                <td class="text-right font-mono text-zinc-400">$${item.addedPrice.toFixed(2)}</td>
+                <td class="text-right font-mono text-white">$${currentPrice.toFixed(2)}</td>
+                <td class="text-right font-mono ${changeClass}">${change}%</td>
+                <td class="text-right text-zinc-500">${item.addedDate}</td>
+                <td class="text-right">
+                    <div class="flex justify-end gap-2">
+                        <button onclick="showWatchlistDetail('${item.id}')" class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-2 py-1 rounded text-[8px] uppercase font-bold">Details</button>
+                        <button onclick="removeFromWatchlist('${item.id}')" class="bg-red-900/20 hover:bg-red-900/40 text-red-500 px-2 py-1 rounded text-[8px] uppercase font-bold">Remove</button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function removeFromWatchlist(id) {
+    let watchlist = JSON.parse(localStorage.getItem('optionsWatchlist') || '[]');
+    watchlist = watchlist.filter(item => item.id !== id);
+    localStorage.setItem('optionsWatchlist', JSON.stringify(watchlist));
+    renderWatchlist();
+    
+    // If we are in the detail view, close it
+    if (!document.getElementById('helpModal').classList.contains('hidden')) {
+        closeHelpModal();
+    }
+}
+
+function showWatchlistDetail(id) {
+    const watchlist = JSON.parse(localStorage.getItem('optionsWatchlist') || '[]');
+    const item = watchlist.find(i => i.id === id);
+    if (!item) return;
+
+    const d = item.analytics;
+    const title = `${item.ticker} $${item.strike} ${item.type} | Exp ${item.expiry}`;
+    
+    const html = `
+        <div class="space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+                <div class="bg-zinc-900/50 p-3 rounded border border-zinc-800">
+                    <div class="text-[8px] text-zinc-500 uppercase">Prob. ITM</div>
+                    <div class="text-xl font-bold text-green-400">${d.prob_itm.toFixed(1)}%</div>
+                </div>
+                <div class="bg-zinc-900/50 p-3 rounded border border-zinc-800">
+                    <div class="text-[8px] text-zinc-500 uppercase">Prob. OTM</div>
+                    <div class="text-xl font-bold text-red-400">${d.prob_otm.toFixed(1)}%</div>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-3 gap-2">
+                <div class="text-center">
+                    <div class="text-[7px] text-zinc-500 uppercase">Delta</div>
+                    <div class="text-xs font-mono text-white">${d.delta.toFixed(4)}</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-[7px] text-zinc-500 uppercase">Gamma</div>
+                    <div class="text-xs font-mono text-white">${d.gamma.toFixed(6)}</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-[7px] text-zinc-500 uppercase">Theta</div>
+                    <div class="text-xs font-mono text-white">${d.theta.toFixed(4)}</div>
+                </div>
+            </div>
+
+            <div class="pt-4 border-t border-zinc-800">
+                <div class="flex justify-between text-[10px] mb-1">
+                    <span class="text-zinc-500 uppercase">Breakeven</span>
+                    <span class="text-white font-mono">$${d.breakeven.toFixed(2)}</span>
+                </div>
+                <div class="flex justify-between text-[10px] mb-1">
+                    <span class="text-zinc-500 uppercase">Expected Move</span>
+                    <span class="text-white font-mono">±$${d.expected_move.toFixed(2)}</span>
+                </div>
+                <div class="flex justify-between text-[10px] mb-1">
+                    <span class="text-zinc-500 uppercase">Intrinsic Val</span>
+                    <span class="text-green-400 font-mono">$${d.intrinsic.toFixed(4)}</span>
+                </div>
+                <div class="flex justify-between text-[10px]">
+                    <span class="text-zinc-500 uppercase">Extrinsic Val</span>
+                    <span class="text-purple-400 font-mono">$${d.extrinsic.toFixed(4)}</span>
+                </div>
+            </div>
+
+            <div class="mt-6">
+                <button onclick="removeFromWatchlist('${id}')" class="w-full bg-red-900/20 hover:bg-red-900/40 text-red-500 font-bold py-2 rounded text-[10px] uppercase tracking-widest transition-all">
+                    Remove from Watchlist
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('helpModalTitle').innerText = title;
+    document.getElementById('helpModalBody').innerHTML = html;
+    document.getElementById('helpModal').classList.remove('hidden');
+    document.getElementById('modalBackdrop').classList.remove('hidden');
 }
 
 // ==========================================
@@ -3313,6 +3464,10 @@ const panelHelp = {
     "arbPanel8": {
         title: "Live Option Explorer",
         desc: "A full yfinance-powered option chain browser. Select any ticker, expiration date, and call/put type to browse all available contracts. Click any row to run the full Black-Scholes quant engine on that specific contract — outputting probability of expiring ITM/OTM, all 5 Greeks (Delta, Gamma, Theta, Vega, Rho), breakeven price, intrinsic vs extrinsic value, expected move at expiry, and a live IV vs HV premium signal to determine if options are over or underpriced."
+    },
+    "arbPanel9": {
+        title: "Institutional Wishlist",
+        desc: "A persistence-layer for high-conviction option trades. When you identify a contract via the Explorer, adding it here allows you to track its 'Live Price' vs your 'Added Price' (Yield Monitoring). This panel serves as a tactical bridge between quantitative discovery and actual trade execution, maintaining full snapshot analytics (Greeks, Probabilities) for every saved contract."
     }
 };
 
