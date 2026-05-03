@@ -94,6 +94,22 @@
             <div id="modalBackdrop" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[9000] hidden transition-all">
             </div>
 
+            <!-- Help Modal -->
+            <div id="helpModal" class="fixed inset-0 z-[10000] hidden flex items-center justify-center p-4">
+                <div class="bg-black border border-zinc-800 rounded-lg w-full max-w-md shadow-[0_0_60px_rgba(0,0,0,0.9)] flex flex-col overflow-hidden">
+                    <div class="bg-zinc-900/50 px-4 py-3 flex justify-between items-center border-b border-zinc-800">
+                        <div class="flex items-center gap-2">
+                            <span class="text-blue-500 font-bold">?</span>
+                            <span id="helpModalTitle" class="text-[11px] font-bold text-zinc-300 uppercase tracking-widest">Panel Help</span>
+                        </div>
+                        <button onclick="closeHelpModal()" class="text-zinc-500 hover:text-white text-lg leading-none font-bold transition-colors">&times;</button>
+                    </div>
+                    <div id="helpModalBody" class="p-5 text-[11px] text-zinc-400 leading-relaxed font-sans">
+                        <!-- Content injected via JS -->
+                    </div>
+                </div>
+            </div>
+
             <nav class="tab-bar">
                 <div id="tab-macro" class="tab-btn active" onclick="switchTab('macro')">MACRO DIRECTION</div>
                 <div id="tab-arbitrage" class="tab-btn" onclick="switchTab('arbitrage')">TIME ARBITRAGE</div>
@@ -156,7 +172,7 @@
                             </div>
                         </div>
                         <div class="flex-1 overflow-hidden relative">
-                            <iframe id="vmriFrame" src="http://pc.vlad.yt:8080/vmri_chart" scrolling="no"
+                            <iframe id="vmriFrame" src="/vmri_chart" scrolling="no"
                                 class="zoomable absolute top-0 left-0 w-full h-full border-none pointer-events-auto"></iframe>
                         </div>
                     </div>
@@ -182,7 +198,7 @@
                             </div>
                         </div>
                         <div class="flex-1 overflow-hidden flex flex-col">
-                            <iframe id="comexFrame" src="http://pc.vlad.yt:8080/inventory_chart" scrolling="no"
+                            <iframe id="comexFrame" src="/inventory_chart" scrolling="no"
                                 class="zoomable flex-1 w-full border-none pointer-events-auto"></iframe>
                         </div>
                     </div>
@@ -974,14 +990,17 @@
 
             <div id="arbitrage-tab" class="tab-content hidden flex-1 flex flex-col overflow-hidden">
                 <div id="arbitragePanelContainer"
-                    class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4 p-4 overflow-y-auto auto-rows-[minmax(350px,auto)] flex-1 h-full">
+                    class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4 p-4 overflow-y-auto terminal-scroll pb-24 auto-rows-[minmax(350px,auto)] flex-1 h-full">
 
                     <!-- Panel 1: Capacity Constraint Oscillator -->
                     <div id="arbPanel1"
                         class="flex flex-col border border-zinc-900 rounded bg-black overflow-hidden shadow-[0_0_20px_rgba(34,197,94,0.1)] transition-all duration-300">
                         <div
                             class="bg-zinc-900/30 px-3 py-1 text-[9px] flex justify-between items-center border-b border-zinc-800">
-                            <span class="text-green-500 font-bold tracking-widest">CAPACITY CONSTRAINT OSCILLATOR</span>
+                            <div class="flex items-center gap-2">
+                                <span class="text-green-500 font-bold tracking-widest">CAPACITY CONSTRAINT OSCILLATOR</span>
+                                <button onclick="openHelpModal('arbPanel1')" class="text-zinc-500 hover:text-white transition-colors cursor-help">?</button>
+                            </div>
                             <span class="text-[8px] text-zinc-500 uppercase">Multi-Factor Z-Score</span>
                         </div>
                         <div class="flex-1 p-6 flex flex-col justify-center items-center gap-6">
@@ -1026,21 +1045,36 @@
                         class="flex flex-col border border-zinc-900 rounded bg-black overflow-hidden shadow-[0_0_20px_rgba(239,68,68,0.1)] transition-all duration-300">
                         <div
                             class="bg-zinc-900/30 px-3 py-1 text-[9px] flex justify-between items-center border-b border-zinc-800">
-                            <span class="text-red-500 font-bold tracking-widest">DEALER TRAPDOOR</span>
+                            <div class="flex items-center gap-2">
+                                <span class="text-red-500 font-bold tracking-widest">DEALER TRAPDOOR</span>
+                                <button onclick="openHelpModal('arbPanel2')" class="text-zinc-500 hover:text-white transition-colors cursor-help">?</button>
+                            </div>
                             <span class="text-[8px] text-zinc-500 uppercase">Gamma State Matrix</span>
                         </div>
-                        <div class="flex-1 p-4 flex flex-col gap-4">
-                            <div class="grid grid-cols-2 gap-4">
-                                <div class="bg-zinc-950 border border-zinc-800 p-3 rounded">
+                        <div class="flex-1 p-4 flex flex-col gap-3">
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="bg-zinc-950 border border-zinc-800 p-2 rounded">
                                     <div class="text-[8px] text-zinc-500 uppercase mb-1">Spot vs Zero Gamma</div>
                                     <div id="trapDistance" class="text-xl font-bold text-white font-mono">--.---</div>
                                     <div id="trapDistancePct" class="text-[9px] text-zinc-500">--.--% Distance</div>
                                 </div>
-                                <div class="bg-zinc-950 border border-zinc-800 p-3 rounded">
+                                <div class="bg-zinc-950 border border-zinc-800 p-2 rounded">
                                     <div class="text-[8px] text-zinc-500 uppercase mb-1">Approach Velocity</div>
                                     <div id="trapVelocity" class="text-xl font-bold text-blue-400 font-mono">--.---
                                     </div>
                                     <div class="text-[9px] text-zinc-500">Points/Minute</div>
+                                </div>
+                                <div class="bg-zinc-950 border border-zinc-800 p-2 rounded">
+                                    <div class="text-[8px] text-zinc-500 uppercase mb-1"
+                                        title="Sensitivity to Volatility">Vanna Exposure</div>
+                                    <div id="trapVanna" class="text-xl font-bold text-purple-400 font-mono">--.---</div>
+                                    <div class="text-[9px] text-zinc-500">Aggregate Δ / 1% Vol</div>
+                                </div>
+                                <div class="bg-zinc-950 border border-zinc-800 p-2 rounded">
+                                    <div class="text-[8px] text-zinc-500 uppercase mb-1"
+                                        title="Sensitivity to Time Decay">Charm Exposure</div>
+                                    <div id="trapCharm" class="text-xl font-bold text-amber-400 font-mono">--.---</div>
+                                    <div class="text-[9px] text-zinc-500">Aggregate Δ / Day</div>
                                 </div>
                             </div>
                             <div
@@ -1066,7 +1100,10 @@
                         class="flex flex-col border border-zinc-900 rounded bg-black overflow-hidden shadow-[0_0_20px_rgba(168,85,247,0.1)] transition-all duration-300">
                         <div
                             class="bg-zinc-900/30 px-3 py-1 text-[9px] flex justify-between items-center border-b border-zinc-800">
-                            <span class="text-purple-400 font-bold tracking-widest">IV PREMIUM BLEED</span>
+                            <div class="flex items-center gap-2">
+                                <span class="text-purple-400 font-bold tracking-widest">IV PREMIUM BLEED</span>
+                                <button onclick="openHelpModal('arbPanel3')" class="text-zinc-500 hover:text-white transition-colors cursor-help">?</button>
+                            </div>
                             <span class="text-[8px] text-zinc-500 uppercase">Retail Trap Tracker</span>
                         </div>
                         <div class="flex-1 flex flex-col overflow-hidden">
@@ -1089,7 +1126,10 @@
                         class="flex flex-col border border-zinc-900 rounded bg-black overflow-hidden shadow-[0_0_20px_rgba(56,189,248,0.1)] transition-all duration-300">
                         <div
                             class="bg-zinc-900/30 px-3 py-1 text-[9px] flex justify-between items-center border-b border-zinc-800">
-                            <span class="text-blue-400 font-bold tracking-widest">ASYMMETRIC PROBABILITY MATRIX</span>
+                            <div class="flex items-center gap-2">
+                                <span class="text-blue-400 font-bold tracking-widest">ASYMMETRIC PROBABILITY MATRIX</span>
+                                <button onclick="openHelpModal('arbPanel4')" class="text-zinc-500 hover:text-white transition-colors cursor-help">?</button>
+                            </div>
                             <span class="text-[8px] text-zinc-500 uppercase">Log-Normal Strike Finder</span>
                         </div>
                         <div class="flex-1 p-4 flex flex-col gap-4">
@@ -1122,7 +1162,59 @@
                             </div>
                         </div>
                     </div>
+                    <!-- Panel 5: Vanna/Charm Profile Map -->
+                    <div id="arbPanel5" class="flex flex-col border border-zinc-900 rounded bg-black overflow-hidden shadow-[0_0_20px_rgba(234,179,8,0.1)] transition-all duration-300">
+                        <div class="bg-zinc-900/30 px-3 py-1 text-[9px] flex justify-between items-center border-b border-zinc-800">
+                            <div class="flex items-center gap-2">
+                                <span class="text-amber-400 font-bold tracking-widest">DEALER PIN MAP</span>
+                                <button onclick="openHelpModal('arbPanel5')" class="text-zinc-500 hover:text-white transition-colors cursor-help">?</button>
+                            </div>
+                            <span class="text-[8px] text-zinc-500 uppercase">Distributed Greeks</span>
+                        </div>
+                        <div class="flex-1 p-4 relative min-h-[200px]">
+                            <canvas id="trapdoorProfileChart"></canvas>
+                        </div>
+                    </div>
 
+                    <!-- Panel 6: Volatility Term Structure -->
+                    <div id="arbPanel6" class="flex flex-col border border-zinc-900 rounded bg-black overflow-hidden shadow-[0_0_20px_rgba(244,63,94,0.1)] transition-all duration-300">
+                        <div class="bg-zinc-900/30 px-3 py-1 text-[9px] flex justify-between items-center border-b border-zinc-800">
+                            <div class="flex items-center gap-2">
+                                <span class="text-rose-400 font-bold tracking-widest">VOLATILITY TERM STRUCTURE</span>
+                                <button onclick="openHelpModal('arbPanel6')" class="text-zinc-500 hover:text-white transition-colors cursor-help">?</button>
+                            </div>
+                            <span class="text-[8px] text-zinc-500 uppercase">ATM IV vs Expiration</span>
+                        </div>
+                        <div class="flex-1 p-4 relative min-h-[200px]">
+                            <canvas id="termStructureChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Panel 7: IV vs HV Spread -->
+                    <div id="arbPanel7" class="flex flex-col border border-zinc-900 rounded bg-black overflow-hidden shadow-[0_0_20px_rgba(16,185,129,0.1)] transition-all duration-300">
+                        <div class="bg-zinc-900/30 px-3 py-1 text-[9px] flex justify-between items-center border-b border-zinc-800">
+                            <div class="flex items-center gap-2">
+                                <span class="text-emerald-400 font-bold tracking-widest">IV / HV SPREAD</span>
+                                <button onclick="openHelpModal('arbPanel7')" class="text-zinc-500 hover:text-white transition-colors cursor-help">?</button>
+                            </div>
+                            <span class="text-[8px] text-zinc-500 uppercase">Premium Valuation</span>
+                        </div>
+                        <div class="flex-1 p-6 flex flex-col justify-center gap-4">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="bg-zinc-950 border border-zinc-800 p-4 rounded text-center">
+                                    <div class="text-[9px] text-zinc-500 uppercase mb-2">20-Day Realized HV</div>
+                                    <div id="spreadRealized" class="text-3xl font-bold text-white font-mono">--.-%</div>
+                                </div>
+                                <div class="bg-zinc-950 border border-zinc-800 p-4 rounded text-center">
+                                    <div class="text-[9px] text-zinc-500 uppercase mb-2">Front-Month ATM IV</div>
+                                    <div id="spreadImplied" class="text-3xl font-bold text-purple-400 font-mono">--.-%</div>
+                                </div>
+                            </div>
+                            <div id="spreadStatus" class="bg-zinc-950 border border-zinc-800 rounded p-4 text-center font-bold text-[12px] uppercase tracking-widest">
+                                AWAITING DATA
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 

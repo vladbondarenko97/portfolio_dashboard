@@ -47,6 +47,44 @@ quant = QuantEngine(LEDGER_CSV)
 # Suppress pandas FutureWarnings for clean terminal output
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
+# ==========================================
+# IN-MEMORY CACHE MANAGER
+# ==========================================
+class DataCache:
+    def __init__(self, ttl_seconds=60):
+        self.ttl = ttl_seconds
+        self.cache = {}
+        self.last_update = {}
+
+    def get_csv(self, file_path):
+        current_time = time.time()
+        if file_path in self.cache:
+            if current_time - self.last_update.get(file_path, 0) < self.ttl:
+                return self.cache[file_path]
+        if not os.path.exists(file_path):
+            return pd.DataFrame()
+        try:
+            df = pd.read_csv(file_path)
+            self.cache[file_path] = df
+            self.last_update[file_path] = current_time
+            return df
+        except Exception as e:
+            print(f"Cache load error for {file_path}: {e}")
+            return pd.DataFrame()
+            
+    def get(self, key):
+        current_time = time.time()
+        if key in self.cache:
+            if current_time - self.last_update.get(key, 0) < self.ttl:
+                return self.cache[key]
+        return None
+
+    def set(self, key, value):
+        self.cache[key] = value
+        self.last_update[key] = time.time()
+
+data_cache = DataCache(ttl_seconds=60)
+
 app = Flask(__name__)
 
 # 1. Force HTML templates to reload instantly (disable to make faster)
@@ -1632,7 +1670,7 @@ def get_institutional_history():
         if not os.path.exists(INSTITUTIONAL_LEDGER_CSV):
             return jsonify({"status": "error", "message": "Institutional ledger not found."}), 404
         
-        df = pd.read_csv(INSTITUTIONAL_LEDGER_CSV)
+        df = data_cache.get_csv(INSTITUTIONAL_LEDGER_CSV)
         
         if df.empty:
             return jsonify({"status": "error", "message": "Ledger is empty."}), 404
@@ -1734,7 +1772,7 @@ def get_macro_ledger_full():
         if not os.path.exists(LEDGER_CSV):
             return jsonify({"status": "error", "message": "Macro ledger not found."}), 404
         
-        df = pd.read_csv(LEDGER_CSV)
+        df = data_cache.get_csv(LEDGER_CSV)
         df = df.dropna(how='all')
         df = df.dropna(subset=['Datetime'])
         df['Datetime'] = pd.to_datetime(df['Datetime'], format='mixed')
@@ -1805,7 +1843,7 @@ def get_time_arbitrage():
         current_vix = vix_data['Close'].iloc[-1] if not vix_data.empty else 20.0
         
         # Pull latest GEX/DIX from Macro Ledger
-        df_macro = pd.read_csv(LEDGER_CSV)
+        df_macro = data_cache.get_csv(LEDGER_CSV)
         latest_macro = df_macro.iloc[-1]
         current_gex = latest_macro.get('GEX', 0)
         current_dix = latest_macro.get('DIX', 0)
@@ -1822,7 +1860,7 @@ def get_time_arbitrage():
         spot_price = 0
         
         if os.path.exists(INST_LEDGER):
-            df_inst = pd.read_csv(INST_LEDGER)
+            df_inst = data_cache.get_csv(INST_LEDGER)
             ticker_inst = df_inst[df_inst['Ticker'] == ticker_symbol].tail(1)
             if not ticker_inst.empty:
                 inst_row = ticker_inst.iloc[0]
@@ -1836,49 +1874,113 @@ def get_time_arbitrage():
         
         gamma_state = quant.get_gamma_state(spot_price, zero_gamma)
         
-        # 2b. Fetch Chain for Analytics
+        # 2b. Fetch Chain for Analytics & Filter 0DTE
         ticker = yf.Ticker(ticker_symbol)
         expirations = ticker.options
         if not expirations:
             return jsonify({"status": "error", "message": "No options available for this ticker."})
         
+        # Filter out 0DTE
         exp = expirations[0]
+        for potential_exp in expirations:
+            days = (datetime.strptime(potential_exp, '%Y-%m-%d') - datetime.now()).days
+            if days > 0:
+                exp = potential_exp
+                break
+                
         chain = ticker.option_chain(exp)
         
-        # 3. IV Bleed
+        # Calculate ATM IV and Realized Volatility for IV/HV Spread
+        try:
+            atm_idx = (chain.calls['strike'] - spot_price).abs().idxmin()
+            atm_iv = chain.calls.loc[atm_idx, 'impliedVolatility']
+        except:
+            atm_iv = 0.20
+            
+        realized_vol = quant.calculate_realized_volatility(ticker_symbol)
+        iv_hv_spread = {
+            'realized_volatility_20d': float(realized_vol),
+            'atm_implied_volatility': float(atm_iv)
+        }
+        
+        # Term Structure Caching
+        term_structure = data_cache.get(f"{ticker_symbol}_term_structure")
+        if not term_structure:
+            term_structure = []
+            targets = [7, 30, 90, 180]
+            for target in targets:
+                try:
+                    closest_exp = min(expirations, key=lambda x: abs((datetime.strptime(x, '%Y-%m-%d') - datetime.now()).days - target))
+                    chain_t = ticker.option_chain(closest_exp)
+                    idx = (chain_t.calls['strike'] - spot_price).abs().idxmin()
+                    t_iv = chain_t.calls.loc[idx, 'impliedVolatility']
+                    days_t = max(1, (datetime.strptime(closest_exp, '%Y-%m-%d') - datetime.now()).days)
+                    term_structure.append({'days': days_t, 'iv': float(t_iv)})
+                except:
+                    pass
+            if term_structure:
+                data_cache.set(f"{ticker_symbol}_term_structure", term_structure)
+        
+        # 3. IV Bleed & Historical Baseline
+        hist_iv_baseline = realized_vol # Use the exact 20-day trailing realized volatility
+
         iv_bleed = []
-        for i in range(min(10, len(chain.calls))):
+        strikes_with_iv = []
+        
+        days_to_exp = (datetime.strptime(exp, '%Y-%m-%d') - datetime.now()).days
+        if days_to_exp <= 0: days_to_exp = 1
+        
+        r_rate = quant.get_risk_free_rate()
+        aggregate_vanna = 0.0
+        aggregate_charm = 0.0
+        vanna_profile = []
+        
+        for i in range(min(15, len(chain.calls))):
             row = chain.calls.iloc[i]
             live_iv = row['impliedVolatility']
-            # Approx historical baseline (real system would pull from a DB)
-            hist_iv = live_iv * (0.8 + random.random() * 0.1) 
+            strike = float(row['strike'])
+            
+            # Use real baseline instead of random mock
+            hist_iv = float(hist_iv_baseline)
+            
             iv_bleed.append({
-                'strike': float(row['strike']),
+                'strike': strike,
                 'live_iv': float(live_iv),
                 'hist_iv': float(hist_iv),
                 'bleed': float((live_iv - hist_iv) / hist_iv if hist_iv > 0 else 0)
             })
             
-        # 4. Probabilities
-        strikes = chain.calls['strike'].head(5).tolist()
-        probs = quant.calculate_strike_probabilities(spot_price, current_vix/100, strikes)
-        
-        prob_matrix = []
-        for p in probs:
-            prob_matrix.append({
-                'strike': p['strike'],
-                'prob_3d': p['prob'] * 0.85,
-                'prob_5d': p['prob'],
-                'prob_7d': p['prob'] * 1.15
-            })
+            strikes_with_iv.append({'strike': strike, 'iv': live_iv})
+            
+            # Second-order Greeks
+            if live_iv > 0:
+                vanna = quant.calculate_vanna(spot_price, strike, days_to_exp, r_rate, live_iv, is_call=True)
+                charm = quant.calculate_charm(spot_price, strike, days_to_exp, r_rate, live_iv, is_call=True)
+                # Weight by open interest, default to 1 if missing
+                oi = row['openInterest'] if pd.notna(row['openInterest']) and row['openInterest'] > 0 else 1
+                aggregate_vanna += vanna * oi
+                aggregate_charm += charm * oi
+                vanna_profile.append({'strike': strike, 'vanna': float(vanna * oi), 'charm': float(charm * oi)})
+            
+        # 4. Probabilities (Skew-Adjusted & Time-Accurate)
+        prob_matrix = quant.calculate_strike_probabilities(spot_price, strikes_with_iv[:5], days_list=[3, 5, 7])
+            
+        dealer_trapdoor = {
+            "vanna_exposure": float(aggregate_vanna),
+            "charm_exposure": float(aggregate_charm),
+            "vanna_profile": vanna_profile
+        }
 
         return jsonify({
             "status": "success",
             "data": {
                 "z_score": z_score,
                 "gamma_state": gamma_state,
+                "dealer_trapdoor": dealer_trapdoor,
                 "iv_bleed": iv_bleed,
-                "probabilities": prob_matrix
+                "probabilities": prob_matrix,
+                "term_structure": term_structure,
+                "iv_hv_spread": iv_hv_spread
             }
         })
 
@@ -1890,7 +1992,7 @@ def get_macro_direction():
     """Consolidated endpoint for Tab 1 (Macro Direction) data snapshots."""
     try:
         # Pull latest from ledger
-        df = pd.read_csv(LEDGER_CSV).tail(1)
+        df = data_cache.get_csv(LEDGER_CSV).tail(1)
         if df.empty:
             return jsonify({"status": "error", "message": "No ledger data."})
             

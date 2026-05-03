@@ -1,4 +1,4 @@
-const API_BASE = "http://pc.vlad.yt:8080";
+const API_BASE = window.location.origin || "";
 
 // 1. HELPER: Format Date to "MMM DD, YYYY"
 function formatDate(dateStr) {
@@ -822,25 +822,30 @@ let isConsoleMinimized = false;
 let savedTopHeight = localStorage.getItem('vladhq_panel_height') || "550"; // Persistent memory
 
 function updateLayoutHeights(newTopHeight) {
-    const topPanel = document.getElementById('panelContainer');
-    const consoleSection = document.getElementById('consoleSection');
+    const macroTab = document.getElementById('macro-tab');
+    const arbTab = document.getElementById('arbitrage-tab');
     
     // On mobile, rely on flexbox and mobile tabs instead of fixed JS heights
     if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
-        topPanel.style.height = '';
-        topPanel.style.flex = '1';
+        if (macroTab) { macroTab.style.height = ''; macroTab.style.flex = '1'; }
+        if (arbTab) { arbTab.style.height = ''; arbTab.style.flex = '1'; }
         return;
     }
     
     const headerHeight = document.querySelector('header')?.offsetHeight || 48;
     const resizerHeight = 4;
     
-    // Apply the height to the top
-    topPanel.style.height = `${newTopHeight}px`;
-    topPanel.style.flex = "none"; // Top panel is the "anchor"
+    // Apply the height to the tabs
+    if (macroTab) {
+        macroTab.style.height = `${newTopHeight}px`;
+        macroTab.style.flex = "none"; // Tabs become the "anchor"
+    }
+    if (arbTab) {
+        arbTab.style.height = `${newTopHeight}px`;
+        arbTab.style.flex = "none";
+    }
 
     // The console is flex-1, so it automatically takes (Total - Top - Header)
-    // We don't even need to set the console height manually!
     
     // Save for persistence
     if (!isConsoleMinimized) {
@@ -893,7 +898,8 @@ function toggleConsole() {
     const consoleBody = document.getElementById('consoleBody');
     const resizer = document.getElementById('v-resizer');
     const minBtn = document.getElementById('btnMinConsole');
-    const topPanel = document.getElementById('panelContainer');
+    const macroTab = document.getElementById('macro-tab');
+    const arbTab = document.getElementById('arbitrage-tab');
 
     if (!isConsoleMinimized) {
         // MINIMIZE LOGIC
@@ -904,7 +910,14 @@ function toggleConsole() {
         // Push top panel to maximum possible height
         const headerHeight = document.querySelector('header')?.offsetHeight || 48;
         const availableHeight = window.innerHeight - headerHeight - 45; // Minus header and console tab
-        topPanel.style.height = `${availableHeight}px`;
+        if (macroTab) {
+            macroTab.style.height = `${availableHeight}px`;
+            macroTab.style.flex = "none";
+        }
+        if (arbTab) {
+            arbTab.style.height = `${availableHeight}px`;
+            arbTab.style.flex = "none";
+        }
         
         minBtn.innerText = "[Expand]";
         log("Console Stashed: Maximum Workspace Active", "info");
@@ -2773,13 +2786,28 @@ function updateArbitrageUI(data) {
     if (data.z_score !== undefined) updateOscillator(data.z_score);
     
     // 2. Update Dealer Trapdoor
-    if (data.gamma_state) updateTrapdoor(data.gamma_state);
+    if (data.gamma_state) updateTrapdoor(data.gamma_state, data.dealer_trapdoor);
     
     // 3. Update IV Bleed
     if (data.iv_bleed) updateIvBleed(data.iv_bleed);
     
     // 4. Update Probability Matrix
     if (data.probabilities) updateProbMatrix(data.probabilities);
+
+    // 5. Update Trapdoor Profile Map
+    if (data.dealer_trapdoor && data.dealer_trapdoor.vanna_profile) {
+        renderTrapdoorProfileChart(data.dealer_trapdoor.vanna_profile);
+    }
+
+    // 6. Update Term Structure
+    if (data.term_structure) {
+        renderTermStructure(data.term_structure);
+    }
+
+    // 7. Update IV/HV Spread
+    if (data.iv_hv_spread) {
+        updateIvHvSpread(data.iv_hv_spread);
+    }
 }
 
 function updateOscillator(score) {
@@ -2813,10 +2841,12 @@ function updateOscillator(score) {
     }
 }
 
-function updateTrapdoor(state) {
+function updateTrapdoor(state, trapdoor) {
     const dist = document.getElementById('trapDistance');
     const distPct = document.getElementById('trapDistancePct');
     const velocity = document.getElementById('trapVelocity');
+    const vanna = document.getElementById('trapVanna');
+    const charm = document.getElementById('trapCharm');
     const icon = document.getElementById('trapStatusIcon');
     const title = document.getElementById('trapStatusTitle');
     const desc = document.getElementById('trapStatusDesc');
@@ -2827,6 +2857,11 @@ function updateTrapdoor(state) {
     dist.innerText = state.distance.toFixed(3);
     if (distPct) distPct.innerText = `${(state.distance_pct * 100).toFixed(2)}% Distance`;
     velocity.innerText = state.velocity.toFixed(4);
+
+    if (trapdoor && vanna && charm) {
+        vanna.innerText = trapdoor.vanna_exposure.toFixed(2);
+        charm.innerText = trapdoor.charm_exposure.toFixed(2);
+    }
 
     if (state.short_gamma_active) {
         if (icon) {
@@ -2895,6 +2930,158 @@ function updateProbMatrix(probs) {
         optimalText.innerText = `SPY $${probs[0].strike} Strike | ${ (probs[0].prob_3d * 100).toFixed(1) }% Base Probability | Dealer Trap Multiplier Active.`;
     }
 }
+
+// --- NEW INSTITUTIONAL UI RENDERERS ---
+
+let trapdoorProfileChartInstance = null;
+function renderTrapdoorProfileChart(profileData) {
+    const ctx = document.getElementById('trapdoorProfileChart')?.getContext('2d');
+    if (!ctx) return;
+    
+    if (trapdoorProfileChartInstance) trapdoorProfileChartInstance.destroy();
+    if (!profileData || profileData.length === 0) return;
+    
+    profileData.sort((a, b) => a.strike - b.strike);
+    
+    const labels = profileData.map(d => d.strike);
+    const vanna = profileData.map(d => d.vanna);
+    const charm = profileData.map(d => d.charm);
+    
+    trapdoorProfileChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Vanna Exposure',
+                    data: vanna,
+                    backgroundColor: 'rgba(168, 85, 247, 0.5)',
+                    borderColor: '#a855f7',
+                    borderWidth: 1,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Charm Exposure',
+                    data: charm,
+                    type: 'line',
+                    borderColor: '#fbbf24',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    pointRadius: 2,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            devicePixelRatio: 3,
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { labels: { color: '#a1a1aa', boxWidth: 10, font: { size: 9 } } }
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: '#a1a1aa', font: { size: 9 } } },
+                y: {
+                    position: 'left',
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: { color: '#a855f7', font: { size: 9 } }
+                },
+                y1: {
+                    position: 'right',
+                    grid: { display: false },
+                    ticks: { color: '#fbbf24', font: { size: 9 } }
+                }
+            }
+        }
+    });
+}
+
+let termStructureChartInstance = null;
+function renderTermStructure(termData) {
+    const ctx = document.getElementById('termStructureChart')?.getContext('2d');
+    if (!ctx) return;
+    
+    if (termStructureChartInstance) termStructureChartInstance.destroy();
+    if (!termData || termData.length === 0) return;
+    
+    termData.sort((a, b) => a.days - b.days);
+    
+    const labels = termData.map(d => `${d.days}D`);
+    const ivs = termData.map(d => d.iv * 100);
+    
+    const isBackwardation = ivs.length >= 2 && ivs[0] > ivs[ivs.length - 1];
+    const color = isBackwardation ? '#f43f5e' : '#38bdf8'; 
+    
+    termStructureChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'ATM Implied Volatility (%)',
+                data: ivs,
+                borderColor: color,
+                backgroundColor: `${color}22`,
+                fill: true,
+                borderWidth: 2,
+                tension: 0.3,
+                pointRadius: 4,
+                pointBackgroundColor: '#000',
+                pointBorderColor: color
+            }]
+        },
+        options: {
+            devicePixelRatio: 3,
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `IV: ${context.parsed.y.toFixed(2)}%`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: '#a1a1aa', font: { size: 10 } } },
+                y: {
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: { color: '#a1a1aa', font: { size: 10 }, callback: v => v + '%' }
+                }
+            }
+        }
+    });
+}
+
+function updateIvHvSpread(spreadData) {
+    const elRealized = document.getElementById('spreadRealized');
+    const elImplied = document.getElementById('spreadImplied');
+    const elStatus = document.getElementById('spreadStatus');
+    
+    if (!elRealized || !elImplied || !elStatus) return;
+    
+    const hv = spreadData.realized_volatility_20d * 100;
+    const iv = spreadData.atm_implied_volatility * 100;
+    
+    elRealized.innerText = hv.toFixed(1) + '%';
+    elImplied.innerText = iv.toFixed(1) + '%';
+    
+    const diff = iv - hv;
+    
+    if (diff > 5) {
+        elStatus.innerText = `IV OVERPRICED (+${diff.toFixed(1)}%) - SELL PREMIUM`;
+        elStatus.className = "bg-red-900/20 border border-red-500 rounded p-4 text-center font-bold text-[12px] uppercase tracking-widest text-red-500";
+    } else if (diff < -5) {
+        elStatus.innerText = `IV UNDERPRICED (${diff.toFixed(1)}%) - BUY PREMIUM`;
+        elStatus.className = "bg-green-900/20 border border-green-500 rounded p-4 text-center font-bold text-[12px] uppercase tracking-widest text-green-500";
+    } else {
+        elStatus.innerText = "VOLATILITY SPREAD NEUTRAL";
+        elStatus.className = "bg-zinc-950 border border-zinc-800 rounded p-4 text-center font-bold text-[12px] uppercase tracking-widest text-zinc-500";
+    }
+}
+
 // ==========================================
 // --- HELP MODAL INTELLIGENCE SYSTEM ---
 // ==========================================
@@ -2973,6 +3160,18 @@ const panelHelp = {
     "arbPanel4": {
         title: "Asymmetric Probability Matrix",
         desc: "Uses log-normal distribution math to calculate the statistical probability of a ticker hitting specific strikes within 3, 5, and 7 days. Focus on strikes with > 60% probability for conservative trades, or < 15% for asymmetric 'lotto' plays."
+    },
+    "arbPanel5": {
+        title: "Dealer Pin Map",
+        desc: "Visualizes the distribution of Vanna and Charm across specific strikes. Dealers are naturally drawn to high-concentration strikes (Dealer Pins) as they hedge their exposures."
+    },
+    "arbPanel6": {
+        title: "Volatility Term Structure",
+        desc: "Plots the At-The-Money Implied Volatility across upcoming expirations. If the curve points down (Backwardation), the market is heavily pricing in an immediate crash. If it points up (Contango), conditions are normal."
+    },
+    "arbPanel7": {
+        title: "IV / HV Spread",
+        desc: "Compares current Implied Volatility against actual historical (realized) volatility. A wide positive spread means options are overpriced (ideal for selling premium), while a negative spread means options are underpriced (ideal for buying premium)."
     }
 };
 
