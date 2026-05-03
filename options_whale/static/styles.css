@@ -333,3 +333,62 @@ body.resizing-active #v-resizer {
         display: none !important;
     }
 }
+
+/* --- TAB NAVIGATION SYSTEM --- */
+.tab-bar {
+    display: flex;
+    background: #000;
+    border-bottom: 1px solid #1a1a1a;
+    padding: 0 1rem;
+    gap: 2rem;
+    height: 3rem;
+    align-items: center;
+    z-index: 40;
+}
+
+.tab-btn {
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #52525b; /* zinc-500 */
+    cursor: pointer;
+    transition: all 0.3s;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    border-bottom: 2px solid transparent;
+}
+
+.tab-btn:hover {
+    color: #a1a1aa; /* zinc-400 */
+}
+
+.tab-btn.active {
+    color: #fff;
+    border-bottom-color: #22c55e; /* green-500 */
+    text-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+}
+
+.tab-content {
+    display: block;
+}
+
+.tab-content.hidden {
+    display: none !important;
+}
+
+/* --- TIME ARBITRAGE SPECIFIC STYLES --- */
+.matrix-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: bold;
+}
+
+.trap-active {
+    animation: trap-flash 1s infinite alternate;
+}
+
+@keyframes trap-flash {
+    from { color: #ef4444; text-shadow: 0 0 5px rgba(239, 68, 68, 0.5); }
+    to { color: #fff; text-shadow: 0 0 20px rgba(239, 68, 68, 0.8); }
+}

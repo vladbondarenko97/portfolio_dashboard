@@ -8,6 +8,7 @@ import xml.etree.ElementTree as ET
 from email.message import EmailMessage
 from email.utils import make_msgid
 from datetime import datetime, timedelta
+import json
 
 # --- NTFY iPhone Notifications --- 
 TOPIC = 'vladhq_alerts'
@@ -34,9 +35,8 @@ def get_upcoming_macro():
     """Fetches High/Medium USD events for the next 7 days with weekend-gap protection."""
     # Added 'weekly' as a fallback to ensure rotation coverage
     urls = [
-        "https://nfs.faireconomy.media/ff_calendar_thisweek.xml",
-        "https://nfs.faireconomy.media/ff_calendar_nextweek.xml"
-    ]
+        "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
+        ]
     headers = {'User-Agent': 'Mozilla/5.0'}
     
     today = datetime.now()
@@ -53,8 +53,8 @@ def get_upcoming_macro():
 
     for url in urls:
         try:
-            # We use a longer timeout to handle weekend server lag
-            resp = api_client.get(url, headers=headers, timeout=15)
+            # We use a short timeout to prevent hangs when rate-limited
+            resp = api_client.get(url, headers=headers, timeout=3)
             
             root = ET.fromstring(resp.content)
             for event in root.findall('event'):
@@ -150,6 +150,30 @@ def get_slv_institutional_data():
     except Exception as e:
         return f"\n🦅 SLV INSTITUTIONAL FLOW: Error reading ledger: {e}\n"
 
+def get_institutional_json():
+    """Returns latest institutional data for SLV and SPY in raw JSON format."""
+    ledger_path = os.path.join(DATA_DIR, "equities_darkpool_gex_ledger.csv")
+    if not os.path.exists(ledger_path):
+        return "{}"
+    
+    try:
+        with open(ledger_path, 'r') as f:
+            reader = csv.DictReader(f)
+            data = list(reader)
+        
+        # Get latest entry for SLV and SPY
+        slv_latest = next((r for r in reversed(data) if r.get('Ticker', '').upper() == 'SLV'), {})
+        spy_latest = next((r for r in reversed(data) if r.get('Ticker', '').upper() == 'SPY'), {})
+        
+        dump = {
+            "slv_institutional_latest": slv_latest,
+            "spy_institutional_latest": spy_latest,
+            "system_timestamp": datetime.now().isoformat()
+        }
+        return json.dumps(dump, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
 # ==========================================
 # 2. MASTER GENERATOR
 # ==========================================
@@ -178,6 +202,10 @@ def generate_and_send():
         options_out = generate_options_report()
         
         full_report = f"{macro_out_text}\n\n{slv_institutional_text}\n\n{market_out}\n\n{options_out}"
+        
+        # Append RAW JSON Data for LLM/Trade Context
+        raw_json = get_institutional_json()
+        full_report += f"\n\n========================================\n ⚡ RAW INSTITUTIONAL JSON SNAPSHOT\n========================================\n{raw_json}"
         
         print("\n" + "="*50)
         print("        FINAL ASSEMBLED REPORT OUTPUT")

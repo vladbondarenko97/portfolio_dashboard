@@ -2149,13 +2149,20 @@ async function loadMacroNews() {
                 const title = article.getAttribute('title') || 'No Title';
                 const published = article.getAttribute('published') || '';
                 const link = article.getAttribute('link') || '#';
+                const sentiment = parseFloat(article.getAttribute('sentiment') || '0');
                 
+                const sentColor = sentiment > 0.05 ? 'text-green-500' : (sentiment < -0.05 ? 'text-red-500' : 'text-zinc-500');
+                const sentLabel = sentiment > 0.05 ? 'BULLISH' : (sentiment < -0.05 ? 'BEARISH' : 'NEUTRAL');
+
                 const row = document.createElement('a');
                 row.href = link;
                 row.target = '_blank';
                 row.className = 'block bg-zinc-950 border border-zinc-900 rounded px-3 py-2 hover:border-blue-900 transition-colors group cursor-pointer';
                 row.innerHTML = `
-                    <div class="text-zinc-300 text-[11px] group-hover:text-blue-400 transition-colors leading-tight">${title}</div>
+                    <div class="flex justify-between items-start gap-2">
+                        <div class="text-zinc-300 text-[11px] group-hover:text-blue-400 transition-colors leading-tight flex-1">${title}</div>
+                        <div class="text-[7px] font-bold px-1 rounded border border-current ${sentColor} whitespace-nowrap mt-0.5">${sentLabel}</div>
+                    </div>
                     <div class="text-zinc-600 text-[8px] mt-1 uppercase tracking-widest">${published}</div>
                 `;
                 container.appendChild(row);
@@ -2718,4 +2725,277 @@ async function dumpAllData() {
         jsonStr,
         'json'
     );
+}
+
+// --- TAB SWITCHING SYSTEM ---
+function switchTab(tabName) {
+    // 1. Update UI Buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    const activeBtn = document.getElementById(`tab-${tabName}`);
+    if (activeBtn) activeBtn.classList.add('active');
+
+    // 2. Toggle Visibility
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
+    const activeContent = document.getElementById(`${tabName}-tab`);
+    if (activeContent) activeContent.classList.remove('hidden');
+
+    // 3. Trigger Logic
+    if (tabName === 'arbitrage') {
+        loadTimeArbitrageData();
+        // Start polling for arbitrage data
+        if (window.arbInterval) clearInterval(window.arbInterval);
+        window.arbInterval = setInterval(loadTimeArbitrageData, 60000);
+    } else {
+        if (window.arbInterval) clearInterval(window.arbInterval);
+    }
+
+    log(`WORKSPACE ROUTING: ${tabName.toUpperCase()} ACTIVE`, 'info');
+}
+
+// --- TIME ARBITRAGE ENGINE ---
+async function loadTimeArbitrageData() {
+    const ticker = document.getElementById('scanTicker').value || "SPY";
+    try {
+        const res = await fetch(`${API_BASE}/api/time_arbitrage?ticker=${ticker}`);
+        const result = await res.json();
+        
+        if (result.status === 'success') {
+            updateArbitrageUI(result.data);
+        }
+    } catch (e) {
+        console.error("Failed to load Time Arbitrage data:", e);
+    }
+}
+
+function updateArbitrageUI(data) {
+    if (!data) return;
+    // 1. Update Oscillator
+    if (data.z_score !== undefined) updateOscillator(data.z_score);
+    
+    // 2. Update Dealer Trapdoor
+    if (data.gamma_state) updateTrapdoor(data.gamma_state);
+    
+    // 3. Update IV Bleed
+    if (data.iv_bleed) updateIvBleed(data.iv_bleed);
+    
+    // 4. Update Probability Matrix
+    if (data.probabilities) updateProbMatrix(data.probabilities);
+}
+
+function updateOscillator(score) {
+    const gauge = document.getElementById('oscillatorGauge');
+    const needle = document.getElementById('oscillatorNeedle');
+    const valueText = document.getElementById('oscillatorValue');
+    const statusText = document.getElementById('oscillatorStatus');
+    const signalBox = document.getElementById('oscillatorSignal');
+
+    if (!needle || !valueText) return;
+
+    // Normalize -100 to +100 to -90 to 90 degrees
+    const rotation = (score / 100) * 90;
+    needle.style.transform = `rotate(${rotation}deg)`;
+    
+    valueText.innerText = score.toFixed(1);
+    
+    if (Math.abs(score) < 75) {
+        if (signalBox) {
+            signalBox.innerText = "CASH POSITION - NO STRUCTURAL EDGE";
+            signalBox.className = "bg-zinc-950 border border-zinc-800 px-4 py-2 rounded text-[11px] font-bold text-zinc-400 uppercase tracking-[0.2em]";
+        }
+        if (statusText) statusText.innerText = "Neutral Variance";
+    } else {
+        const side = score > 0 ? "BULLISH" : "BEARISH";
+        if (signalBox) {
+            signalBox.innerText = `STRATEGIC EDGE DETECTED: ${side}`;
+            signalBox.className = `bg-${score > 0 ? 'green' : 'red'}-900/20 border border-${score > 0 ? 'green' : 'red'}-500 px-4 py-2 rounded text-[11px] font-bold text-${score > 0 ? 'green' : 'red'}-500 uppercase tracking-[0.2em] animate-pulse`;
+        }
+        if (statusText) statusText.innerText = "Extreme Extension";
+    }
+}
+
+function updateTrapdoor(state) {
+    const dist = document.getElementById('trapDistance');
+    const distPct = document.getElementById('trapDistancePct');
+    const velocity = document.getElementById('trapVelocity');
+    const icon = document.getElementById('trapStatusIcon');
+    const title = document.getElementById('trapStatusTitle');
+    const desc = document.getElementById('trapStatusDesc');
+    const alert = document.getElementById('trapAlert');
+
+    if (!dist || !velocity) return;
+
+    dist.innerText = state.distance.toFixed(3);
+    if (distPct) distPct.innerText = `${(state.distance_pct * 100).toFixed(2)}% Distance`;
+    velocity.innerText = state.velocity.toFixed(4);
+
+    if (state.short_gamma_active) {
+        if (icon) {
+            icon.innerText = "🌋";
+            icon.className = "text-4xl mb-2 trap-active";
+        }
+        if (title) {
+            title.innerText = "SHORT GAMMA SQUEEZE";
+            title.className = "text-sm font-bold text-red-500 uppercase tracking-widest mb-1";
+        }
+        if (desc) desc.innerText = "Dealers are structurally exposed. Forced selling/buying imminent.";
+        if (alert) alert.classList.remove('hidden');
+    } else {
+        if (icon) {
+            icon.innerText = "🔒";
+            icon.className = "text-4xl mb-2 text-zinc-800";
+        }
+        if (title) {
+            title.innerText = "Gamma Neutral";
+            title.className = "text-sm font-bold text-zinc-500 uppercase tracking-widest mb-1";
+        }
+        if (desc) desc.innerText = "Market makers are currently hedged. No structural squeeze detected.";
+        if (alert) alert.classList.add('hidden');
+    }
+}
+
+function updateIvBleed(bleedData) {
+    const container = document.getElementById('ivBleedContainer');
+    if (!container) return;
+    if (!bleedData || bleedData.length === 0) {
+        container.innerHTML = '<div class="p-8 text-center text-zinc-700 text-[10px] uppercase tracking-widest">No significant bleed detected.</div>';
+        return;
+    }
+
+    container.innerHTML = bleedData.map(item => `
+        <div class="grid grid-cols-4 text-[10px] p-2 border-b border-zinc-900 hover:bg-zinc-900/50 transition-colors">
+            <div class="pl-2 font-bold text-white">${item.strike}</div>
+            <div class="text-right text-purple-400">${(item.live_iv * 100).toFixed(1)}%</div>
+            <div class="text-right text-zinc-500">${(item.hist_iv * 100).toFixed(1)}%</div>
+            <div class="text-right pr-2 ${item.bleed > 0.2 ? 'text-red-500 font-bold' : 'text-zinc-400'}">${(item.bleed * 100).toFixed(1)}%</div>
+        </div>
+    `).join('');
+}
+
+function updateProbMatrix(probs) {
+    const body = document.getElementById('probMatrixBody');
+    const optimalText = document.getElementById('probOptimalText');
+
+    if (!body) return;
+
+    if (!probs || probs.length === 0) {
+        body.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-zinc-700 uppercase tracking-widest font-sans">No data available.</td></tr>';
+        return;
+    }
+
+    body.innerHTML = probs.map(p => `
+        <tr class="border-b border-zinc-900/50 hover:bg-zinc-900/30">
+            <td class="p-2 pl-3 font-bold text-blue-400">${p.strike}</td>
+            <td class="p-2 text-right">${(p.prob_3d * 100).toFixed(1)}%</td>
+            <td class="p-2 text-right">${(p.prob_5d * 100).toFixed(1)}%</td>
+            <td class="p-2 text-right pr-3">${(p.prob_7d * 100).toFixed(1)}%</td>
+        </tr>
+    `).join('');
+
+    if (probs[0] && optimalText) {
+        optimalText.innerText = `SPY $${probs[0].strike} Strike | ${ (probs[0].prob_3d * 100).toFixed(1) }% Base Probability | Dealer Trap Multiplier Active.`;
+    }
+}
+// ==========================================
+// --- HELP MODAL INTELLIGENCE SYSTEM ---
+// ==========================================
+const panelHelp = {
+    // Macro Tab
+    "panel1": {
+        title: "Macro Risk Index (VMRI)",
+        desc: "The Vlad Macro Risk Index (VMRI) is our proprietary systemic stress measure. It aggregates Volatility (VIX), Dollar Strength (DXY), and Credit Spreads (HY OAS). High VMRI (red) indicates systemic fragility; low VMRI (green) indicates stability."
+    },
+    "panel2": {
+        title: "COMEX Physical Inventory",
+        desc: "Tracks the registered vs eligible silver inventory at the COMEX. Sharp drops in 'Registered' silver often precede physical squeezes and high price volatility."
+    },
+    "panel3": {
+        title: "War Room: Scenario Engine",
+        desc: "An interactive Monte Carlo simulation tool. Adjust macro levers (DXY, 10Y Yield, VIX) to see the theoretical impact on assets like Silver or SPY based on historical correlations."
+    },
+    "panel4": {
+        title: "Institutional Options Scanner",
+        desc: "Real-time feed of large institutional options orders (Whales). Focus on high premium (> \k) and High Vol/OI ratio orders to spot smart money positioning."
+    },
+    "panel5": {
+        title: "Macro Catalyst Calendar",
+        desc: "Upcoming macroeconomic events (CPI, FOMC, Payrolls). High impact events are highlighted. Markets typically 'front-run' these events 48 hours in advance."
+    },
+    "panel6": {
+        title: "Dealer Map (GEX)",
+        desc: "Gamma Exposure (GEX) profile. Shows where market makers are forced to buy or sell to hedge their books. Price magnets usually exist at large Call/Put walls."
+    },
+    "panel7": {
+        title: "Dark Pool Tape",
+        desc: "Real-time feed of off-exchange institutional trades. These 'hidden' trades often represent large accumulation or distribution by banks and hedge funds."
+    },
+    "panel8": {
+        title: "Dark Pool Visualizer",
+        desc: "A graphical representation of dark pool activity over the last 24 hours. Bubbles represent trade size. Clusters of large trades indicate institutional interest levels."
+    },
+    "panel9": {
+        title: "SLV Institutional Flow",
+        desc: "Historical tracking of dark pool sentiment specifically for the iShares Silver Trust (SLV). Correlates institutional buying with future price movements."
+    },
+    "panel10": {
+        title: "Economic Intelligence Feed",
+        desc: "Consolidated macro news with AI-driven sentiment analysis. Headlines are tagged BULLISH or BEARISH based on their likely impact on market liquidity."
+    },
+    "panel11": {
+        title: "Physical Market Premiums",
+        desc: "Tracks the premium of physical silver bullion over the paper spot price. Rising premiums indicate physical supply-demand imbalances."
+    },
+    "panel12": {
+        title: "Volatility Term Structure",
+        desc: "Compares front-month volatility to back-month. Backwardation (front > back) usually signals an imminent market crash or extreme fear."
+    },
+    "panel13": {
+        title: "Liquidity Provider Heatmap",
+        desc: "Visualizes the depth of the order book across major exchanges. Used to identify 'liquidity pockets' where price is likely to accelerate."
+    },
+    "panel14": {
+        title: "Shanghai-COMEX Arb Spread",
+        desc: "Calculates the price difference between the Shanghai Gold Exchange (SGE) and COMEX. A high positive spread (Shanghai higher) often pulls silver higher globally."
+    },
+
+    // Time Arbitrage Tab
+    "arbPanel1": {
+        title: "Capacity Constraint Oscillator",
+        desc: "A multi-factor Z-Score that measures market 'extension'. When the oscillator is at extremes (Red/Green), the market is capacity constrained and a reversal or squeeze is likely. Trading near 'Neutral' (Yellow) has lower probability of success."
+    },
+    "arbPanel2": {
+        title: "Dealer Trapdoor",
+        desc: "Monitors the 'Zero Gamma' level. If price falls below Zero Gamma, market makers move from 'Long Gamma' (stabilizing) to 'Short Gamma' (destabilizing), leading to explosive volatility. 'Approach Velocity' measures how fast we are hitting this trapdoor."
+    },
+    "arbPanel3": {
+        title: "IV Premium Bleed",
+        desc: "Compares live Implied Volatility (IV) to historical norms. High 'Bleed %' means premiums are overpriced (Retail Trap). Look for low bleed levels to enter asymmetric long positions cheaply."
+    },
+    "arbPanel4": {
+        title: "Asymmetric Probability Matrix",
+        desc: "Uses log-normal distribution math to calculate the statistical probability of a ticker hitting specific strikes within 3, 5, and 7 days. Focus on strikes with > 60% probability for conservative trades, or < 15% for asymmetric 'lotto' plays."
+    }
+};
+
+function openHelpModal(panelId) {
+    const data = panelHelp[panelId];
+    if (!data) return;
+
+    document.getElementById('helpModalTitle').innerText = data.title;
+    document.getElementById('helpModalBody').innerHTML = `<p class="mb-4">${data.desc}</p>
+    <div class="mt-6 pt-4 border-t border-zinc-900">
+        <h4 class="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-2">Tactical Application:</h4>
+        <ul class="list-disc list-inside text-[10px] space-y-1">
+            <li>Monitor for trend alignment across 3+ panels.</li>
+            <li>Identify structural asymmetries before technical entry.</li>
+            <li>Use to validate or invalidate institutional whale trades.</li>
+        </ul>
+    </div>`;
+    
+    document.getElementById('helpModal').classList.remove('hidden');
+    document.getElementById('modalBackdrop').classList.remove('hidden');
+}
+
+function closeHelpModal() {
+    document.getElementById('helpModal').classList.add('hidden');
+    document.getElementById('modalBackdrop').classList.add('hidden');
 }
