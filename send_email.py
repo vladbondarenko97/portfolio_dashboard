@@ -1,6 +1,7 @@
 import smtplib
 import subprocess
 import os
+from config import required_env
 import requests
 import xml.etree.ElementTree as ET
 from email.message import EmailMessage
@@ -14,8 +15,8 @@ NTFY_URL = f"https://ntfy.sh/{TOPIC}"
 # --- EMAIL CONFIGURATION ---
 SMTP_SERVER = "mail.vlad.yt"
 SMTP_PORT = 587 
-SENDER_EMAIL = "i@vlad.yt"
-SENDER_PASSWORD = "M@xim12345!" 
+SENDER_EMAIL = required_env("EMAIL_SENDER")
+SENDER_PASSWORD = required_env("EMAIL_PASSWORD")
 RECIPIENT_EMAIL = "contactvlad1k@gmail.com"
 
 # --- ABSOLUTE PATHS ---

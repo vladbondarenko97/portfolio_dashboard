@@ -1,5 +1,6 @@
 import xml.etree.ElementTree as ET
 import os
+from config import required_env
 import csv
 import json
 import numpy as np
@@ -16,7 +17,7 @@ DASHBOARD_FILE = os.path.join(DATA_DIR, TODAY_STR, "volume_dashboard.txt")
 TACTICAL_FILE = os.path.join(DATA_DIR, TODAY_STR, "tactical_ruling.txt")
 
 # Initialize Databento
-DB_API_KEY = 'db-eLfjfMeAhtKf8QdqNWUFAhMGJAduq'
+DB_API_KEY = required_env("DATABENTO_API_KEY", alt_name="DB_API_KEY")
 db_client = db.Historical(DB_API_KEY)
 
 #--- BLACK-SCHOLES GAMMA CALCULATOR ---

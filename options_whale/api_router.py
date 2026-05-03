@@ -1,3 +1,4 @@
+import sys
 import pandas as pd
 from flask import Flask, jsonify, render_template_string, Response, request, render_template
 from flask_cors import CORS # Add this
@@ -16,6 +17,12 @@ import math
 import time
 import databento as db
 import numpy as np
+
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+
+from config import required_env
 from scipy.stats import norm
 from playwright.sync_api import sync_playwright
 
@@ -481,8 +488,7 @@ def get_arbitrage_history():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # Initialize the Databento Client
-# PRO TIP: In the future, put this in an environment variable!
-DB_API_KEY = 'db-eLfjfMeAhtKf8QdqNWUFAhMGJAduq'
+DB_API_KEY = required_env("DATABENTO_API_KEY", alt_name="DB_API_KEY")
 db_client = db.Historical(DB_API_KEY)
 
 @app.route('/api/darkpool')

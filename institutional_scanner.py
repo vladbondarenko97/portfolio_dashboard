@@ -1,4 +1,5 @@
 import os
+from config import required_env
 import csv
 import math
 import databento as db
@@ -7,7 +8,7 @@ from datetime import datetime, timedelta
 from scipy.stats import norm
 
 # --- CONFIGURATION ---
-DB_API_KEY = 'db-eLfjfMeAhtKf8QdqNWUFAhMGJAduq'
+DB_API_KEY = required_env("DATABENTO_API_KEY", alt_name="DB_API_KEY")
 DATA_DIR = os.path.join(os.path.expanduser("~"), "Desktop", "CME_Data")
 # Create a dedicated ledger for institutional flow to keep macro data clean
 LEDGER_CSV = os.path.join(DATA_DIR, "equities_darkpool_gex_ledger.csv")

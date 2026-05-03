@@ -4,13 +4,14 @@ import sys
 from datetime import datetime, timedelta
 from playwright.sync_api import sync_playwright, TimeoutError
 from playwright_stealth import Stealth
+from config import required_env
 
 # --- CONFIGURATION ---
 LOGIN_URL = "https://login.cmegroup.com/sso/accountstatus/showAuth.action"
 STATIC_LATEST_URL = "https://www.cmegroup.com/ftp/daily_volume/daily_volume.xlsx"
 
-USERNAME = "i@vlad.yt"
-PASSWORD = "Veelad1337$$$"
+USERNAME = required_env("CME_LOGIN_USERNAME")
+PASSWORD = required_env("CME_LOGIN_PASSWORD")
 
 # Saves to a folder named 'CME_Data' on your Mac's Desktop
 SAVE_DIR = os.path.join(os.path.expanduser("~"), "Desktop", "CME_Data")

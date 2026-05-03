@@ -15,7 +15,7 @@ echo "======================================"
 
 echo "\n▶️ STEP 1: DOWNLOADING LATEST CME DATA (30 DAYS)..."
 # We revert to pulling the standard 30-day block, no sys args needed
-#python download_volume.py
+python download_volume.py
 
 echo "\n▶️ STEP 1.5: PULLING PHYSICAL COMEX INVENTORY..."
 python update_inventory.py

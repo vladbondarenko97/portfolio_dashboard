@@ -1,4 +1,5 @@
 import os
+from config import required_env
 import csv
 from playwright.sync_api import sync_playwright, TimeoutError
 import pandas as pd
@@ -12,7 +13,7 @@ import akshare as ak
 import requests
 
 # --- CONFIGURATION ---
-GOLD_API_KEY = "goldapi-bz4c4j19mha1slyo-io"
+GOLD_API_KEY = required_env("GOLD_API_KEY")
 DATA_DIR = os.path.join(os.path.expanduser("~"), "Desktop", "CME_Data")
 
 if len(sys.argv) > 1:
@@ -25,15 +26,28 @@ INPUT_FILE = os.path.join(DAILY_DIR, "master_market_data.csv")
 
 def get_last_valid_price(ticker_symbol):
     """Deep search for the most recent valid price in the last 7 days for weekend support."""
-    try:
-        t = yf.Ticker(ticker_symbol)
-        hist = t.history(period="7d")
-        if not hist.empty:
-            price = hist['Close'].iloc[-1]
-            change = hist['Close'].iloc[-1] - hist['Close'].iloc[-2] if len(hist) > 1 else 0.0
-            return price, change
-    except: pass
+    candidates = [ticker_symbol]
+    if ticker_symbol.upper() == "SIH27.CMX":
+        candidates.extend(["SI=F", "SI", "SILVER"])  # fallback to continuous silver futures
+
+    candidates = list(dict.fromkeys(candidates))
+
+    for symbol in candidates:
+        try:
+            t = yf.Ticker(symbol)
+            hist = t.history(period="7d")
+            if not hist.empty:
+                price = hist['Close'].iloc[-1]
+                change = hist['Close'].iloc[-1] - hist['Close'].iloc[-2] if len(hist) > 1 else 0.0
+                if symbol != ticker_symbol:
+                    print(f"⚠️ Fallback used for {ticker_symbol}: {symbol} -> {price}")
+                return price, change
+        except Exception:
+            continue
+
+    print(f"⚠️ No valid price found for {ticker_symbol}; returning zeros")
     return 0.0, 0.0
+
 
 def fetch_market_prices():
     """Fetches global snapshots using GoldAPI for Spot, Yahoo for SLV/COMEX, and AKShare for SGE."""

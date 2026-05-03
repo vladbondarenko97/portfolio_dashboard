@@ -31,6 +31,7 @@ except ImportError:
     nasdaqdatalink = None
 # Optional: FRED API Key (for DXY, etc.)
 FRED_API_KEY = os.environ.get("FRED_API_KEY", "")
+FRED_API_KEY = "cd61da3e0d2880811750290cf34a73d3"
 import yfinance as yf
 import requests
 from datetime import datetime
@@ -40,7 +41,7 @@ from bs4 import BeautifulSoup
 # --- CONFIGURATION ---
 
 # Alpha Vantage API Key for DXY
-ALPHA_VANTAGE_KEY = "YW2UOXMBSGLQ7MZK"
+ALPHA_VANTAGE_KEY = os.environ.get("ALPHA_VANTAGE_KEY", "")
 
 def get_latest_comex_registered():
     """Retrieves the absolute latest 'Registered' ounce count from the history CSV."""
@@ -383,7 +384,7 @@ def get_credit_spread():
     # We increase the limit to 300 to capture a full year of trading days (approx 252 days/year)
     params = {
         "series_id": "BAMLH0A0HYM2",
-        "api_key": "cd61da3e0d2880811750290cf34a73d3", # Reverted to your secure variable
+        "api_key": FRED_API_KEY,
         "file_type": "json",
         "sort_order": "desc", # Gets the newest dates first
         "limit": 300          
@@ -437,7 +438,7 @@ def get_liquidity_plumbing():
     def fetch_series_with_deltas(series_id, divisor=1.0):
         params = {
             "series_id": series_id,
-            "api_key": "cd61da3e0d2880811750290cf34a73d3",
+            "api_key": FRED_API_KEY,
             "file_type": "json",
             "sort_order": "desc",
             "limit": 300 # Pull ~1 year of data

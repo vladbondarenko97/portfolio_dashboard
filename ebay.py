@@ -1,4 +1,5 @@
 import os
+from config import required_env
 import csv
 import json
 import base64
@@ -9,8 +10,8 @@ from datetime import datetime, timedelta
 import time
 
 # --- EBAY API CREDENTIALS ---
-APP_ID = "VladBond-VLADHQ-PRD-0f6069bf2-c81009b8"
-CERT_ID = "PRD-f6069bf2445d-eeff-401d-acca-9873"
+APP_ID = required_env("EBAY_APP_ID")
+CERT_ID = required_env("EBAY_CERT_ID")
 
 # --- 1. DYNAMIC SPOT PRICE INGESTION (TEXT PARSER) ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
