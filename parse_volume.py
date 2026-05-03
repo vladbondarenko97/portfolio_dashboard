@@ -9,7 +9,7 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
 # --- CONFIGURATION ---
-DATA_DIR = os.path.join(os.path.expanduser("~"), "Desktop", "CME_Data")
+from config import DATA_DIR
 
 # If the bash script passes a specific folder name, use it. 
 if len(sys.argv) > 2:
@@ -97,10 +97,9 @@ def parse_cme_files(num_days=30): # <--- MAKE SURE THIS HAS num_days=30
     # Clean up column names for your dashboard
     final_df.columns = ['Product', 'Type', 'Volume', 'Open_Interest', 'Date', 'OI_Change']
 
-    # Save to CSV
-    final_df.to_csv(OUTPUT_FILE, index=False)
-    print(f"\n✅ SUCCESS! Master data saved to: {OUTPUT_FILE}")
+    print(f"\n✅ SUCCESS! Master data parsed in-memory.")
     print(final_df.tail(10)) # Show preview
+    return final_df
 
 if __name__ == "__main__":
     # Default to 30 days

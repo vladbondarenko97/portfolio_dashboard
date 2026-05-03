@@ -8,8 +8,8 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
 # --- CONFIGURATION ---
+from config import DATA_DIR
 URL = "https://www.cmegroup.com/delivery_reports/Silver_stocks.xls"
-DATA_DIR = os.path.join(os.path.expanduser("~"), "Desktop", "CME_Data")
 HISTORY_FILE = os.path.join(DATA_DIR, "comex_inventory_history.csv")
 
 def update_silver_inventory():
@@ -90,11 +90,14 @@ def update_silver_inventory():
                 
             hist.to_csv(HISTORY_FILE, index=False)
             print(f"✅ History updated in {HISTORY_FILE}")
+            return hist
         else:
             print("❌ Error: Could not find 'TOTAL REGISTERED' or 'TOTAL ELIGIBLE' labels.")
+            return None
 
     except Exception as e:
         print(f"❌ Error parsing file: {e}")
+        return None
 
 if __name__ == "__main__":
     update_silver_inventory()

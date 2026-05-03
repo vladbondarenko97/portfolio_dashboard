@@ -68,43 +68,45 @@ def format_contract(contract, title):
     - Last Price: ${last_price:.2f} | Implied Volatility: {iv:.2f}%
     - Symbol: {contract['contractSymbol']}"""
 
-def main():
-    print(f"\n--- OPTIONS WHALE SCANNER ---")
-    print(f"Time: {datetime.now().strftime('%Y-%m-%d %I:%M %p')}\n")
+def generate_options_report():
+    output = []
+    output.append(f"\n--- OPTIONS WHALE SCANNER ---")
+    output.append(f"Time: {datetime.now().strftime('%Y-%m-%d %I:%M %p')}\n")
 
     # 1. Scan SPY
     spy_data = get_top_options("SPY")
     if spy_data:
-        print("\n" + "="*40)
-        print(" 🦅 SPY (S&P 500 ETF) OPTIONS")
-        print("="*40)
-        print("🔥 CALLS:")
-        print(format_contract(spy_data['top_vol_call'], "Highest Volume Call"))
-        print(format_contract(spy_data['top_oi_call'], "Highest OI Call"))
-        print("\n🩸 PUTS:")
-        print(format_contract(spy_data['top_vol_put'], "Highest Volume Put"))
-        print(format_contract(spy_data['top_oi_put'], "Highest OI Put"))
+        output.append("\n" + "="*40)
+        output.append(" 🦅 SPY (S&P 500 ETF) OPTIONS")
+        output.append("="*40)
+        output.append("🔥 CALLS:")
+        output.append(format_contract(spy_data['top_vol_call'], "Highest Volume Call"))
+        output.append(format_contract(spy_data['top_oi_call'], "Highest OI Call"))
+        output.append("\n🩸 PUTS:")
+        output.append(format_contract(spy_data['top_vol_put'], "Highest Volume Put"))
+        output.append(format_contract(spy_data['top_oi_put'], "Highest OI Put"))
 
-    print("\n")
+    output.append("\n")
 
     # 2. Scan SLV
     slv_data = get_top_options("SLV")
     if slv_data:
-        print("\n" + "="*40)
-        print(" 🪙 SLV (SILVER TRUST) OPTIONS")
-        print("="*40)
-        print("🔥 CALLS:")
-        print(format_contract(slv_data['top_vol_call'], "Highest Volume Call"))
-        print(format_contract(slv_data['top_oi_call'], "Highest OI Call"))
-        print("\n🩸 PUTS:")
-        print(format_contract(slv_data['top_vol_put'], "Highest Volume Put"))
-        print(format_contract(slv_data['top_oi_put'], "Highest OI Put"))
+        output.append("\n" + "="*40)
+        output.append(" 🪙 SLV (SILVER TRUST) OPTIONS")
+        output.append("="*40)
+        output.append("🔥 CALLS:")
+        output.append(format_contract(slv_data['top_vol_call'], "Highest Volume Call"))
+        output.append(format_contract(slv_data['top_oi_call'], "Highest OI Call"))
+        output.append("\n🩸 PUTS:")
+        output.append(format_contract(slv_data['top_vol_put'], "Highest Volume Put"))
+        output.append(format_contract(slv_data['top_oi_put'], "Highest OI Put"))
 
-    print("\n--- SCAN COMPLETE ---")
+    output.append("\n--- SCAN COMPLETE ---")
+    return "\n".join(output)
 
 if __name__ == "__main__":
     # Suppress pandas FutureWarnings that occasionally pop up with yfinance concatenations
     import warnings
     warnings.simplefilter(action='ignore', category=FutureWarning)
     
-    main()
+    print(generate_options_report())

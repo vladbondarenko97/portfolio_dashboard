@@ -4,12 +4,12 @@ import csv
 import math
 import databento as db
 import yfinance as yf
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from scipy.stats import norm
 
 # --- CONFIGURATION ---
-DB_API_KEY = required_env("DATABENTO_API_KEY", alt_name="DB_API_KEY")
-DATA_DIR = os.path.join(os.path.expanduser("~"), "Desktop", "CME_Data")
+from config import DATA_DIR, DATABENTO_API_KEY
+
 # Create a dedicated ledger for institutional flow to keep macro data clean
 LEDGER_CSV = os.path.join(DATA_DIR, "equities_darkpool_gex_ledger.csv")
 TICKERS = ["SPY", "SLV"]
@@ -18,7 +18,7 @@ TICKERS = ["SPY", "SLV"]
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # Initialize Databento
-db_client = db.Historical(DB_API_KEY)
+db_client = db.Historical(DATABENTO_API_KEY)
 
 # --- THE BLACK-SCHOLES ENGINE ---
 def calculate_gamma(S, K, T, r, sigma):
@@ -31,7 +31,7 @@ def calculate_gamma(S, K, T, r, sigma):
 
 # --- DARK POOL SCANNER ---
 def get_dark_pool_profile(ticker):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     yesterday = now - timedelta(days=1)
     available_end = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
     
@@ -173,16 +173,16 @@ def log_to_csv(filepath, date_str, ticker, dp_data, gex_data):
             writer.writeheader()
         writer.writerow(row)
 
-# --- MAIN EXECUTION ---
-if __name__ == "__main__":
+def run_institutional_scan():
     today_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-    print(f"\n========================================")
-    print(f" 🦅 INSTITUTIONAL ENGINE SCANNER")
-    print(f" {today_str}")
-    print(f"========================================\n")
+    output = []
+    output.append(f"\n========================================")
+    output.append(f" 🦅 INSTITUTIONAL ENGINE SCANNER")
+    output.append(f" {today_str}")
+    output.append(f"========================================\n")
 
     for ticker in TICKERS:
-        print(f"Scanning {ticker}...")
+        output.append(f"Scanning {ticker}...")
         dp_data = get_dark_pool_profile(ticker)
         gex_data = get_gex_profile(ticker)
         
@@ -190,21 +190,26 @@ if __name__ == "__main__":
         
         # Terminal Output
         spot = gex_data['spot_price'] if gex_data else "UNAVAILABLE"
-        print(f"\n[{ticker} OVERVIEW] - Spot: ${spot}")
+        output.append(f"\n[{ticker} OVERVIEW] - Spot: ${spot}")
         
         if dp_data:
-            print(f"  Dark Pool Bias:   {dp_data['sentiment']} (VWAP: ${dp_data['vwap_price']:.2f})")
-            print(f"  Total Block Vol:  {dp_data['total_block_volume']:,} shares")
+            output.append(f"  Dark Pool Bias:   {dp_data['sentiment']} (VWAP: ${dp_data['vwap_price']:.2f})")
+            output.append(f"  Total Block Vol:  {dp_data['total_block_volume']:,} shares")
         else:
-            print("  Dark Pool Bias:   NO DATA / T+1 WAIT")
+            output.append("  Dark Pool Bias:   NO DATA / T+1 WAIT")
             
         if gex_data:
-            print(f"  GEX Call Wall:    ${gex_data['call_wall']}")
-            print(f"  GEX Put Wall:     ${gex_data['put_wall']}")
+            output.append(f"  GEX Call Wall:    ${gex_data['call_wall']}")
+            output.append(f"  GEX Put Wall:     ${gex_data['put_wall']}")
         else:
-            print("  GEX Walls:        NO OPTIONS DATA")
+            output.append("  GEX Walls:        NO OPTIONS DATA")
             
-        print("-" * 40)
+        output.append("-" * 40)
 
-    print(f"\n✅ Scan complete. Historical data appended to:")
-    print(f"   {LEDGER_CSV}\n")
+    output.append(f"\n✅ Scan complete. Historical data appended to:")
+    output.append(f"   {LEDGER_CSV}\n")
+    return "\n".join(output)
+
+# --- MAIN EXECUTION ---
+if __name__ == "__main__":
+    print(run_institutional_scan())

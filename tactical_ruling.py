@@ -9,7 +9,7 @@ import subprocess
 import xml.etree.ElementTree as ET
 
 # Define the Master Data Directory
-DATA_DIR = os.path.join(os.path.expanduser("~"), "Desktop", "CME_Data")
+from config import DATA_DIR, FRED_API_KEY, ALPHA_VANTAGE_KEY
 
 # 1. Save the real terminal output channel
 original_stdout = sys.stdout
@@ -29,37 +29,30 @@ try:
     import nasdaqdatalink
 except ImportError:
     nasdaqdatalink = None
-# Optional: FRED API Key (for DXY, etc.)
-FRED_API_KEY = os.environ.get("FRED_API_KEY", "")
-FRED_API_KEY = "cd61da3e0d2880811750290cf34a73d3"
+# (API Keys now loaded from config)
 import yfinance as yf
-import requests
+from core.api_client import api_client
 from datetime import datetime
 from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
 
 # --- CONFIGURATION ---
 
-# Alpha Vantage API Key for DXY
-ALPHA_VANTAGE_KEY = os.environ.get("ALPHA_VANTAGE_KEY", "")
+# (Alpha Vantage Key now loaded from config)
 
-def get_latest_comex_registered():
-    """Retrieves the absolute latest 'Registered' ounce count from the history CSV."""
-    try:
-        # POINTING DIRECTLY TO THE CME_DATA FOLDER
-        csv_path = os.path.join(DATA_DIR, "comex_inventory_history.csv")
+def get_latest_comex_registered(inventory_df=None):
+    """Retrieves the absolute latest 'Registered' ounce count from the dataframe or history CSV."""
+    if inventory_df is not None and not inventory_df.empty:
+        latest_row = inventory_df.iloc[-1]
+        return float(latest_row['Registered'])
         
-        if not os.path.exists(csv_path):
-            print(f"[TACTICAL] Error: {csv_path} not found.")
-            return 0
-            
-        df = pd.read_csv(csv_path)
-        # Grab the last row in the 'Registered' column
-        latest_val = df['Registered'].iloc[-1]
-        return float(latest_val)
-    except Exception as e:
-        print(f"[TACTICAL] Error reading inventory history: {e}")
-        return 0
+    history_file = os.path.join(DATA_DIR, "comex_inventory_history.csv")
+    if os.path.exists(history_file):
+        df = pd.read_csv(history_file)
+        if not df.empty:
+            latest_row = df.iloc[-1]
+            return float(latest_row['Registered'])
+    return 0.0
 
 def find_latest_volume_dashboard(lookback_days=7):
     """Checks the last X days for the most recent volume_dashboard.txt."""
@@ -210,7 +203,7 @@ def get_dxy():
     # Try Alpha Vantage
     try:
         url = f"https://www.alphavantage.co/query?function=DX&apikey={ALPHA_VANTAGE_KEY}"
-        r = requests.get(url, timeout=10)
+        r = api_client.get(url, timeout=10)
         j = r.json()
         # Alpha Vantage may not have direct DXY, so synthesize if needed
         if 'Realtime Currency Exchange Rate' in j:
@@ -236,7 +229,7 @@ def get_dxy():
         fx_vals = {}
         for pair in fx_pairs:
             url = f"https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency={fx_pairs[pair][0]}&to_currency={fx_pairs[pair][1]}&apikey={ALPHA_VANTAGE_KEY}"
-            r = requests.get(url, timeout=10)
+            r = api_client.get(url, timeout=10)
             j = r.json()
             try:
                 fx_vals[pair] = float(j['Realtime Currency Exchange Rate']['5. Exchange Rate'])
@@ -259,7 +252,7 @@ def get_dxy():
     try:
         url = "https://www.investing.com/indices/us-dollar-index"
         headers = {"User-Agent": "Mozilla/5.0"}
-        r = requests.get(url, headers=headers, timeout=10)
+        r = api_client.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(r.text, "html.parser")
         price_span = soup.find("span", {"data-test": "instrument-price-last"})
         if price_span:
@@ -352,26 +345,24 @@ def get_gex_dix():
     # Try public CSVs or GitHub for GEX/DIX (example: SqueezeMetrics public CSV, if available)
     # Example placeholder: https://raw.githubusercontent.com/SqueezeMetrics/monitor/main/gex.csv
     gex, dix = None, None
+    gex_url = "https://raw.githubusercontent.com/SqueezeMetrics/monitor/main/gex.csv"
+    dix_url = "https://raw.githubusercontent.com/SqueezeMetrics/monitor/main/dix.csv"
     try:
-        gex_url = "https://raw.githubusercontent.com/SqueezeMetrics/monitor/main/gex.csv"
-        r = requests.get(gex_url, timeout=10)
-        if r.status_code == 200:
-            lines = r.text.splitlines()
-            if len(lines) > 1:
-                last = lines[-1].split(',')
-                gex = float(last[1])
-                print("[GEX] Source: SqueezeMetrics GitHub CSV")
+        r = api_client.get(gex_url, timeout=10)
+        lines = r.text.splitlines()
+        if len(lines) > 1:
+            last = lines[-1].split(',')
+            gex = float(last[1])
+            print("[GEX] Source: SqueezeMetrics GitHub CSV")
     except Exception as e:
         print(f"Error fetching GEX from GitHub CSV: {e}")
     try:
-        dix_url = "https://raw.githubusercontent.com/SqueezeMetrics/monitor/main/dix.csv"
-        r = requests.get(dix_url, timeout=10)
-        if r.status_code == 200:
-            lines = r.text.splitlines()
-            if len(lines) > 1:
-                last = lines[-1].split(',')
-                dix = float(last[1])
-                print("[DIX] Source: SqueezeMetrics GitHub CSV")
+        r = api_client.get(dix_url, timeout=10)
+        lines = r.text.splitlines()
+        if len(lines) > 1:
+            last = lines[-1].split(',')
+            dix = float(last[1])
+            print("[DIX] Source: SqueezeMetrics GitHub CSV")
     except Exception as e:
         print(f"Error fetching DIX from GitHub CSV: {e}")
     return gex, dix
@@ -391,7 +382,7 @@ def get_credit_spread():
     }
 
     try:
-        r = requests.get(url, params=params, timeout=10)
+        r = api_client.get(url, params=params, timeout=10)
         data = r.json()
         
         if "observations" in data and len(data["observations"]) > 0:
@@ -444,7 +435,7 @@ def get_liquidity_plumbing():
             "limit": 300 # Pull ~1 year of data
         }
         try:
-            r = requests.get(url, params=params, timeout=10)
+            r = api_client.get(url, params=params, timeout=10)
             data = r.json()
 
             if "observations" in data and len(data["observations"]) > 0:
@@ -494,25 +485,24 @@ def get_catalyst_calendar():
     tripwires = []
 
     try:
-        r = requests.get(url, headers=headers, timeout=10)
-        if r.status_code == 200:
-            import xml.etree.ElementTree as ET
-            root = ET.fromstring(r.content)
+        r = api_client.get(url, headers=headers, timeout=10)
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(r.content)
             
-            for event in root.findall('event'):
-                country = event.find('country').text
-                impact = event.find('impact').text
-                date_str = event.find('date').text
+        for event in root.findall('event'):
+            country = event.find('country').text
+            impact = event.find('impact').text
+            date_str = event.find('date').text
+            
+            # We ONLY care about High Impact (Tier-1) USD events happening TODAY
+            if country == "USD" and impact == "High" and date_str == today_str:
+                time_str = event.find('time').text # e.g., "8:30am"
+                title = event.find('title').text   # e.g., "CPI m/m" or "FOMC Statement"
                 
-                # We ONLY care about High Impact (Tier-1) USD events happening TODAY
-                if country == "USD" and impact == "High" and date_str == today_str:
-                    time_str = event.find('time').text # e.g., "8:30am"
-                    title = event.find('title').text   # e.g., "CPI m/m" or "FOMC Statement"
-                    
-                    tripwires.append({
-                        "time": time_str,
-                        "event": title
-                    })
+                tripwires.append({
+                    "time": time_str,
+                    "event": title
+                })
         if len(tripwires) > 0:            
             print(f"[CATALYST] Source: ForexFactory XML ({len(tripwires)} Tier-1 Events Today)")
             return tripwires
@@ -635,8 +625,7 @@ def get_macro_calendar_native():
 
     for url in urls:
         try:
-            resp = requests.get(url, headers=headers, timeout=15)
-            if resp.status_code != 200: continue
+            resp = api_client.get(url, headers=headers, timeout=15)
             
             root = ET.fromstring(resp.content)
             for event in root.findall('event'):
@@ -682,13 +671,14 @@ def get_latest_comex_inventory():
         return 0
 
 
-def print_tactical_ruling():
+def print_tactical_ruling(inventory_df=None):
+    print("Gathering macro data...")
     import xml.etree.ElementTree as ET
     from xml.dom import minidom
     import akshare as ak
 
     # --- TOP LEVEL DATA PREP (PAPER vs PHYSICAL) ---
-    physical_inventory_oz = get_latest_comex_registered()
+    physical_inventory_oz = get_latest_comex_registered(inventory_df)
     silver_oi = 0
     paper_claims_oz = 0
     leverage_ratio = 0
@@ -946,7 +936,7 @@ def print_tactical_ruling():
     log_macro_ledger(ledger_data)
     # --- TRANSMIT THE PAYLOAD ---
     sys.stdout = original_stdout
-    print(xml_output)
+    return xml_output
 
 if __name__ == "__main__":
-    print_tactical_ruling()
+    print(print_tactical_ruling())

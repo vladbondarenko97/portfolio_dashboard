@@ -16,6 +16,7 @@ function formatCompact(valStr) {
 
 // 3. MAIN TERMINAL LOGGER
 function log(content, type = 'info') {
+    if (typeof switchMobileTab === 'function') switchMobileTab('console');
     const consoleLog = document.getElementById('consoleLog');
     const time = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
     
@@ -496,8 +497,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Load Default Panels
     setTimeout(() => loadDarkPoolProfile(), 2000);
-    setTimeout(() => loadDealerMap(), 1600); // <--- Add this line
+    setTimeout(() => loadDealerMap(), 1600);
     setTimeout(() => loadArbitrageLedger(), 1800);
+    // Load Phase 1 Panels
+    setTimeout(() => loadSlvInstitutionalFlow(), 2200);
+    setTimeout(() => loadSlvGexMap(), 2400);
+    setTimeout(() => loadMacroCalendar(), 2600);
+    setTimeout(() => loadMacroNews(), 2800);
+    setTimeout(() => loadFedLiquidity(), 3000);
+    setTimeout(() => loadShfeArbSpread(), 3200);
 
     // Add this to your DOMContentLoaded in app.js
     document.getElementById('modalBackdrop').addEventListener('click', () => {
@@ -509,6 +517,10 @@ document.addEventListener('DOMContentLoaded', () => {
     panels.forEach(panel => {
         // When drag starts, apply styling
         panel.addEventListener('dragstart', function(e) {
+            if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
+                e.preventDefault();
+                return;
+            }
             draggedPanel = this;
             setTimeout(() => this.classList.add('panel-dragging'), 0);
         });
@@ -744,7 +756,8 @@ async function triggerAction(endpoint) {
     log(`System Command: ${endpoint}`, 'cmd');
     try { 
         const res = await fetch(`${API_BASE}${endpoint}`); 
-        const t = await res.text(); 
+        const t = await res.text();
+        window._lastXmlDump = t; // Cache for copy-data on panel1/panel2
         log(t, 'success'); 
         refreshFrame('vmriFrame'); 
         refreshFrame('comexFrame');
@@ -775,7 +788,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     resizer.addEventListener('mousedown', (e) => {
-        if (isConsoleMinimized) return; // Disable resizing when hidden
+        if (isConsoleMinimized || (window.matchMedia && window.matchMedia('(max-width: 768px)').matches)) return; // Disable resizing when hidden or on mobile
         isResizing = true;
         document.body.classList.add('resizing-active');
         shield.style.display = 'block';
@@ -784,8 +797,8 @@ document.addEventListener('DOMContentLoaded', () => {
 window.addEventListener('mousemove', (e) => {
         if (!isResizing) return;
         
-        const offsetTop = 48;
-        const newHeight = e.clientY - offsetTop;
+        const headerHeight = document.querySelector('header')?.offsetHeight || 48;
+        const newHeight = e.clientY - headerHeight;
 
         // Constraint: Don't crush the console (min 100px) or the charts (min 200px)
         if (newHeight > 200 && newHeight < (window.innerHeight - 150)) {
@@ -811,7 +824,15 @@ let savedTopHeight = localStorage.getItem('vladhq_panel_height') || "550"; // Pe
 function updateLayoutHeights(newTopHeight) {
     const topPanel = document.getElementById('panelContainer');
     const consoleSection = document.getElementById('consoleSection');
-    const headerHeight = 48;
+    
+    // On mobile, rely on flexbox and mobile tabs instead of fixed JS heights
+    if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
+        topPanel.style.height = '';
+        topPanel.style.flex = '1';
+        return;
+    }
+    
+    const headerHeight = document.querySelector('header')?.offsetHeight || 48;
     const resizerHeight = 4;
     
     // Apply the height to the top
@@ -833,6 +854,40 @@ function updateLayoutHeights(newTopHeight) {
     }
 }
 
+// --- MOBILE TAB NAVIGATION ---
+function switchMobileTab(tab) {
+    if (!window.matchMedia('(max-width: 768px)').matches) return;
+    
+    const panelContainer = document.getElementById('panelContainer');
+    const consoleSection = document.getElementById('consoleSection');
+    const tabPanels = document.getElementById('tabPanels');
+    const tabConsole = document.getElementById('tabConsole');
+    
+    if (tab === 'console') {
+        panelContainer.classList.add('mobile-tab-hidden');
+        consoleSection.classList.remove('mobile-tab-hidden');
+        
+        if (tabConsole) {
+            tabConsole.classList.add('text-white', 'border-blue-500', 'bg-zinc-900/50');
+            tabConsole.classList.remove('text-zinc-500', 'border-transparent');
+            tabPanels.classList.add('text-zinc-500', 'border-transparent');
+            tabPanels.classList.remove('text-white', 'border-blue-500', 'bg-zinc-900/50');
+        }
+        
+        if (isConsoleMinimized) toggleConsole();
+    } else {
+        panelContainer.classList.remove('mobile-tab-hidden');
+        consoleSection.classList.add('mobile-tab-hidden');
+        
+        if (tabPanels) {
+            tabPanels.classList.add('text-white', 'border-blue-500', 'bg-zinc-900/50');
+            tabPanels.classList.remove('text-zinc-500', 'border-transparent');
+            tabConsole.classList.add('text-zinc-500', 'border-transparent');
+            tabConsole.classList.remove('text-white', 'border-blue-500', 'bg-zinc-900/50');
+        }
+    }
+}
+
 function toggleConsole() {
     const consoleSection = document.getElementById('consoleSection');
     const consoleBody = document.getElementById('consoleBody');
@@ -847,7 +902,8 @@ function toggleConsole() {
         resizer.classList.add('hidden');
         
         // Push top panel to maximum possible height
-        const availableHeight = window.innerHeight - 48 - 45; // Minus header and console tab
+        const headerHeight = document.querySelector('header')?.offsetHeight || 48;
+        const availableHeight = window.innerHeight - headerHeight - 45; // Minus header and console tab
         topPanel.style.height = `${availableHeight}px`;
         
         minBtn.innerText = "[Expand]";
@@ -1019,6 +1075,7 @@ async function loadDealerMap() {
         }
         
         const data = json.data;
+        window._lastGexData = { ticker, ...data }; // Cache for copy-data feature
         
         // --- UPDATE UI STATS ---
         document.getElementById('gexSpot').innerText = `$${data.spot.toFixed(2)}`;
@@ -1539,4 +1596,1126 @@ function updateDpChartFilter(value) {
     if (window.currentDpData) {
         renderDarkPoolChart(window.currentDpData, minSize);
     }
+}
+
+// ==========================================
+// --- COPY DATA MODAL ENGINE ---
+// ==========================================
+
+// Panel label map for the modal title
+const PANEL_LABELS = {
+    panel1: 'MACRO RISK INDEX (VMRI)',
+    panel2: 'COMEX PHYSICAL INVENTORY',
+    panel3: 'WAR ROOM: SCENARIO ENGINE',
+    panel4: 'COMEX PAPER:PHYSICAL RATIO',
+    panel5: 'PHYSICAL ARB LEDGER',
+    panel6: 'DEALER MAP (GEX)',
+    panel7: 'DARK POOL TAPE',
+    panel8: 'DARK POOL VISUALIZER',
+    panel9: 'SLV INSTITUTIONAL FLOW',
+    panel10: 'SLV DEALER MAP (GEX)',
+    panel11: 'CATALYST CALENDAR',
+    panel12: 'MACRO NEWS FEED',
+    panel13: 'FED LIQUIDITY PLUMBING',
+    panel14: 'SHANGHAI-COMEX ARB'
+};
+
+// Collects data per panel and opens the modal
+function copyPanelData(panelId) {
+    let payload = null;
+    let format = 'json';
+
+    try {
+        if (panelId === 'panel1' || panelId === 'panel2') {
+            // iFrame panels — read last known XML dump from API
+            const lastDump = window._lastXmlDump || null;
+            if (lastDump) {
+                payload = lastDump;
+                format = 'xml';
+            } else {
+                payload = JSON.stringify({ note: 'No cached data. Click RE-SCAN ALL DATA first.', panel: PANEL_LABELS[panelId] }, null, 2);
+            }
+        }
+
+        else if (panelId === 'panel3') {
+            // War Room: current base macro data + slider values
+            const warData = {
+                panel: PANEL_LABELS[panelId],
+                live_environment: currentBaseData || {},
+                scenario_shifts: {
+                    dxy_shift: parseFloat(document.getElementById('shiftDxy').value),
+                    tnx_shift: parseFloat(document.getElementById('shiftTnx').value),
+                    oas_shift: parseFloat(document.getElementById('shiftOas').value),
+                    vix_shift_pct: parseFloat(document.getElementById('shiftVix').value),
+                },
+                hypothetical_vmri: parseFloat(document.getElementById('warVmriScore').innerText) || null,
+                risk_status: document.getElementById('warStatus').innerText
+            };
+            payload = JSON.stringify(warData, null, 2);
+        }
+
+        else if (panelId === 'panel4') {
+            // COMEX Paper:Physical ratio panel
+            const ratio = document.getElementById('livePaperRatio').innerText;
+            const status = document.getElementById('liveRatioStatusBanner').innerText;
+            const claims = document.getElementById('livePaperOz').innerText;
+            const statusText = document.getElementById('ratioStatusText').innerText;
+            payload = JSON.stringify({
+                panel: PANEL_LABELS[panelId],
+                paper_to_physical_ratio: ratio,
+                oz_paper_claims_per_physical: claims,
+                status_banner: status,
+                status_detail: statusText
+            }, null, 2);
+        }
+
+        else if (panelId === 'panel5') {
+            // Physical Arb Ledger
+            if (window.arbData) {
+                payload = JSON.stringify({ panel: PANEL_LABELS[panelId], ...window.arbData }, null, 2);
+            } else {
+                payload = JSON.stringify({ note: 'No data yet. Panel loads on startup.' }, null, 2);
+            }
+        }
+
+        else if (panelId === 'panel6') {
+            // GEX / Dealer Map
+            if (window._lastGexData) {
+                payload = JSON.stringify({ panel: PANEL_LABELS[panelId], ...window._lastGexData }, null, 2);
+            } else {
+                payload = JSON.stringify({ note: 'Scan a ticker first using the GEX SCAN button.' }, null, 2);
+            }
+        }
+
+        else if (panelId === 'panel7' || panelId === 'panel8') {
+            // Dark Pool Tape & Visualizer share the same data
+            if (window.currentDpData) {
+                payload = JSON.stringify({ panel: PANEL_LABELS[panelId], ...window.currentDpData }, null, 2);
+            } else {
+                payload = JSON.stringify({ note: 'Scan a ticker first using the Dark Pool SCAN button.' }, null, 2);
+            }
+        }
+
+        else if (panelId === 'panel9') {
+            if (window._slvFlowData) {
+                payload = JSON.stringify({ panel: PANEL_LABELS[panelId], ...window._slvFlowData }, null, 2);
+            } else {
+                payload = JSON.stringify({ note: 'SLV flow data loading...' }, null, 2);
+            }
+        }
+
+        else if (panelId === 'panel10') {
+            if (window._slvGexLiveData) {
+                payload = JSON.stringify({ panel: PANEL_LABELS[panelId], ...window._slvGexLiveData }, null, 2);
+            } else {
+                payload = JSON.stringify({ note: 'Click SCAN to load SLV GEX data.' }, null, 2);
+            }
+        }
+
+        else if (panelId === 'panel11') {
+            if (window._calendarData) {
+                payload = JSON.stringify({ panel: PANEL_LABELS[panelId], events: window._calendarData }, null, 2);
+            } else {
+                payload = JSON.stringify({ note: 'Calendar data loading...' }, null, 2);
+            }
+        }
+
+        else if (panelId === 'panel12') {
+            if (window._newsData) {
+                payload = JSON.stringify({ panel: PANEL_LABELS[panelId], articles: window._newsData }, null, 2);
+            } else {
+                payload = JSON.stringify({ note: 'News feed loading...' }, null, 2);
+            }
+        }
+
+        else if (panelId === 'panel13') {
+            if (window._liquidityData) {
+                payload = JSON.stringify({ panel: PANEL_LABELS[panelId], ...window._liquidityData }, null, 2);
+            } else {
+                payload = JSON.stringify({ note: 'Liquidity data loading...' }, null, 2);
+            }
+        }
+
+        else if (panelId === 'panel14') {
+            if (window._arbSpreadData) {
+                payload = JSON.stringify({ panel: PANEL_LABELS[panelId], ...window._arbSpreadData }, null, 2);
+            } else {
+                payload = JSON.stringify({ note: 'Arb spread data loading...' }, null, 2);
+            }
+        }
+
+    } catch(e) {
+        payload = JSON.stringify({ error: e.message }, null, 2);
+    }
+
+    openCopyModal(PANEL_LABELS[panelId] || panelId, payload, format);
+}
+
+function openCopyModal(title, text, format = 'json') {
+    const modal = document.getElementById('copyDataModal');
+    document.getElementById('copyModalTitle').innerText = title;
+    document.getElementById('copyModalText').value = text || '';
+    document.getElementById('copyModalMeta').innerText = `Format: ${format.toUpperCase()} · ${(text || '').length.toLocaleString()} chars`;
+    document.getElementById('copyModalStatus').innerText = '';
+    modal.classList.remove('hidden');
+
+    // Auto copy to clipboard immediately
+    doCopyText(true);
+}
+
+function closeCopyModal() {
+    document.getElementById('copyDataModal').classList.add('hidden');
+}
+
+async function doCopyText(silent = false) {
+    const text = document.getElementById('copyModalText').value;
+    const statusEl = document.getElementById('copyModalStatus');
+    const btn = document.getElementById('copyModalBtn');
+
+    try {
+        await navigator.clipboard.writeText(text);
+        statusEl.innerText = '✓ COPIED TO CLIPBOARD';
+        statusEl.className = 'text-[10px] font-bold text-green-400 uppercase tracking-widest';
+        btn.innerText = '✓ COPIED';
+        btn.className = 'text-[10px] font-bold bg-green-400 text-black px-3 py-1 rounded transition-all tracking-widest uppercase';
+        setTimeout(() => {
+            statusEl.innerText = '';
+            btn.innerText = 'COPY';
+            btn.className = 'text-[10px] font-bold bg-green-600 hover:bg-green-400 text-black px-3 py-1 rounded transition-all tracking-widest uppercase';
+        }, 2500);
+    } catch(e) {
+        if (!silent) {
+            statusEl.innerText = 'CLIPBOARD ERROR — SELECT & COPY MANUALLY';
+            statusEl.className = 'text-[10px] font-bold text-red-400 uppercase tracking-widest';
+        }
+    }
+}
+
+// Close copy modal on backdrop click
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('copyDataModal').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('copyDataModal')) closeCopyModal();
+    });
+});
+
+// ==========================================
+// --- PANEL 9: SLV INSTITUTIONAL FLOW ---
+// ==========================================
+
+let slvFlowChartInstance = null;
+window._slvFlowData = null;
+
+async function loadSlvInstitutionalFlow() {
+    try {
+        const res = await fetch(`${API_BASE}/api/institutional_history?ticker=SLV&limit=100`);
+        const json = await res.json();
+        
+        if (json.status === 'success' && json.data) {
+            window._slvFlowData = json.data;
+            
+            // Update header stats with latest values
+            const d = json.data;
+            const lastIdx = d.labels.length - 1;
+            
+            const sentEl = document.getElementById('slvDpSentiment');
+            const lastSent = d.dp_sentiment[lastIdx];
+            if (sentEl && lastSent) {
+                sentEl.innerText = lastSent;
+                if (lastSent === 'BULLISH') sentEl.className = 'text-green-500 font-bold text-sm drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]';
+                else if (lastSent === 'BEARISH') sentEl.className = 'text-red-500 font-bold text-sm drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]';
+                else sentEl.className = 'text-zinc-400 font-bold text-sm';
+            }
+            
+            const vwapEl = document.getElementById('slvDpVwap');
+            if (vwapEl && d.dp_vwap[lastIdx]) vwapEl.innerText = `$${parseFloat(d.dp_vwap[lastIdx]).toFixed(2)}`;
+            
+            const cwEl = document.getElementById('slvGexCallWall');
+            if (cwEl && d.gex_call_wall[lastIdx]) cwEl.innerText = `$${parseFloat(d.gex_call_wall[lastIdx]).toFixed(2)}`;
+            
+            const pwEl = document.getElementById('slvGexPutWall');
+            if (pwEl && d.gex_put_wall[lastIdx]) pwEl.innerText = `$${parseFloat(d.gex_put_wall[lastIdx]).toFixed(2)}`;
+            
+            renderSlvFlowChart('sentiment');
+            log('SLV Institutional Flow ledger loaded.', 'success');
+        }
+    } catch (e) {
+        console.error('SLV Flow Error:', e);
+    }
+}
+
+function renderSlvFlowChart(view) {
+    if (!window._slvFlowData) return;
+    const data = window._slvFlowData;
+    
+    // Toggle button active states
+    document.querySelectorAll('.slv-toggle').forEach(btn => btn.classList.remove('active'));
+    if (view === 'sentiment') document.getElementById('btnSlvSentiment')?.classList.add('active');
+    if (view === 'volume') document.getElementById('btnSlvVolume')?.classList.add('active');
+    if (view === 'gex') document.getElementById('btnSlvGex')?.classList.add('active');
+    
+    const ctx = document.getElementById('slvFlowChart').getContext('2d');
+    if (slvFlowChartInstance) slvFlowChartInstance.destroy();
+    
+    let datasets = [];
+    
+    if (view === 'sentiment') {
+        // Bull vs Bear volume bars
+        const bullData = data.dp_bull_vol.map(v => v != null ? parseFloat(v) : null);
+        const bearData = data.dp_bear_vol.map(v => v != null ? -parseFloat(v) : null);
+        
+        datasets = [
+            {
+                label: 'Bull Volume',
+                data: bullData,
+                backgroundColor: 'rgba(34, 197, 94, 0.7)',
+                borderColor: 'rgb(34, 197, 94)',
+                borderWidth: 1,
+                type: 'bar'
+            },
+            {
+                label: 'Bear Volume',
+                data: bearData,
+                backgroundColor: 'rgba(239, 68, 68, 0.7)',
+                borderColor: 'rgb(239, 68, 68)',
+                borderWidth: 1,
+                type: 'bar'
+            }
+        ];
+    } else if (view === 'volume') {
+        datasets = [
+            {
+                label: 'Total Block Volume',
+                data: data.dp_total_vol.map(v => v != null ? parseFloat(v) : null),
+                borderColor: '#a78bfa',
+                backgroundColor: 'rgba(167, 139, 250, 0.1)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.3,
+                pointRadius: 2,
+                pointHoverRadius: 5
+            }
+        ];
+    } else if (view === 'gex') {
+        datasets = [
+            {
+                label: 'Call Wall',
+                data: data.gex_call_wall.map(v => v != null ? parseFloat(v) : null),
+                borderColor: '#22c55e',
+                borderWidth: 2,
+                tension: 0.3,
+                pointRadius: 1,
+                fill: false
+            },
+            {
+                label: 'Put Wall',
+                data: data.gex_put_wall.map(v => v != null ? parseFloat(v) : null),
+                borderColor: '#ef4444',
+                borderWidth: 2,
+                tension: 0.3,
+                pointRadius: 1,
+                fill: false
+            },
+            {
+                label: 'Spot Price',
+                data: data.spot_price.map(v => v != null ? parseFloat(v) : null),
+                borderColor: 'rgba(255, 255, 255, 0.6)',
+                borderWidth: 1.5,
+                borderDash: [4, 4],
+                tension: 0.3,
+                pointRadius: 0,
+                fill: false
+            }
+        ];
+    }
+    
+    slvFlowChartInstance = new Chart(ctx, {
+        type: view === 'sentiment' ? 'bar' : 'line',
+        data: { labels: data.labels, datasets: datasets },
+        options: {
+            devicePixelRatio: 3,
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { labels: { color: '#a1a1aa', boxWidth: 10, font: { size: 9 } } },
+                tooltip: {
+                    backgroundColor: 'rgba(9, 9, 11, 0.95)',
+                    borderColor: '#27272a',
+                    borderWidth: 1,
+                    padding: 10,
+                    titleColor: '#fff',
+                    bodyColor: '#a1a1aa'
+                }
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: '#a1a1aa', font: { size: 8 }, maxTicksLimit: 8 } },
+                y: {
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: { color: '#a1a1aa', font: { size: 9 }, callback: (v) => {
+                        if (view === 'gex') return '$' + v.toFixed(0);
+                        return formatCompact(Math.abs(v).toString());
+                    }}
+                }
+            }
+        }
+    });
+}
+
+// ==========================================
+// --- PANEL 10: SLV GEX MAP (LIVE) ---
+// ==========================================
+
+let slvGexChartInstance = null;
+window._slvGexLiveData = null;
+
+async function loadSlvGexMap() {
+    log('Scanning SLV Dealer Options chain...', 'cmd');
+    
+    try {
+        const res = await fetch(`${API_BASE}/api/gex?ticker=SLV`);
+        const json = await res.json();
+        
+        if (json.status !== 'success') {
+            log(`SLV GEX Error: ${json.message}`, 'error');
+            return;
+        }
+        
+        const data = json.data;
+        window._slvGexLiveData = { ticker: 'SLV', ...data };
+        
+        // Update stats
+        document.getElementById('slvGexSpot').innerText = `$${data.spot.toFixed(2)}`;
+        document.getElementById('slvGexZero').innerText = `$${data.zeroGamma.toFixed(2)}`;
+        document.getElementById('slvGexLiveCallWall').innerText = `$${data.callWall.toFixed(2)}`;
+        document.getElementById('slvGexLivePutWall').innerText = `$${data.putWall.toFixed(2)}`;
+        
+        // Render chart (identical to SPY GEX chart pattern)
+        const ctx = document.getElementById('slvGexChart').getContext('2d');
+        if (slvGexChartInstance) slvGexChartInstance.destroy();
+        
+        const backgroundColors = data.gamma.map(val => val >= 0 ? 'rgba(6, 182, 212, 0.8)' : 'rgba(239, 68, 68, 0.8)');
+        const borderColors = data.gamma.map(val => val >= 0 ? 'rgb(6, 182, 212)' : 'rgb(239, 68, 68)');
+        
+        slvGexChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: data.strikes,
+                datasets: [{
+                    label: 'Net Dealer Gamma',
+                    data: data.gamma,
+                    backgroundColor: backgroundColors,
+                    borderColor: borderColors,
+                    borderWidth: 1,
+                    borderRadius: 2
+                }]
+            },
+            options: {
+                devicePixelRatio: 3,
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            label: function(context) { return `Net Gamma: ${formatCompact(context.raw.toString())}`; }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                        ticks: { color: '#a1a1aa', font: { size: 9 }, callback: (v) => formatCompact(v.toString()) }
+                    },
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: '#a1a1aa', font: { size: 9 }, maxTicksLimit: 15 }
+                    }
+                }
+            },
+            plugins: [{
+                id: 'slvSpotLine',
+                afterDraw: (chart) => {
+                    const xAxis = chart.scales.x;
+                    const yAxis = chart.scales.y;
+                    const ctx = chart.ctx;
+                    let closestIdx = 0;
+                    let minDiff = Infinity;
+                    data.strikes.forEach((strike, i) => {
+                        let diff = Math.abs(strike - data.spot);
+                        if (diff < minDiff) { minDiff = diff; closestIdx = i; }
+                    });
+                    const xPixel = xAxis.getPixelForValue(closestIdx);
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.setLineDash([5, 5]);
+                    ctx.moveTo(xPixel, yAxis.top);
+                    ctx.lineTo(xPixel, yAxis.bottom);
+                    ctx.lineWidth = 1.5;
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+                    ctx.stroke();
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 9px JetBrains Mono';
+                    ctx.fillText('SPOT', xPixel + 4, yAxis.top + 10);
+                    ctx.restore();
+                }
+            }]
+        });
+        
+        log('SLV GEX Profile loaded.', 'success');
+    } catch (e) {
+        log(`SLV GEX Error: ${e.message}`, 'error');
+    }
+}
+
+// ==========================================
+// --- PANEL 11: MACRO CALENDAR ---
+// ==========================================
+
+window._calendarData = null;
+
+async function loadMacroCalendar() {
+    try {
+        const res = await fetch(`${API_BASE}/api/macro_calendar`);
+        const json = await res.json();
+        
+        const container = document.getElementById('calendarContainer');
+        
+        if (json.status === 'success' && json.events && json.events.length > 0) {
+            window._calendarData = json.events;
+            container.innerHTML = '';
+            
+            json.events.forEach(ev => {
+                let impactColor = 'text-zinc-500';
+                let impactDot = 'bg-zinc-600';
+                if (ev.impact === 'High') { impactColor = 'text-red-400'; impactDot = 'bg-red-500'; }
+                else if (ev.impact === 'Medium') { impactColor = 'text-amber-400'; impactDot = 'bg-amber-500'; }
+                
+                const row = document.createElement('div');
+                row.className = 'bg-zinc-950 border border-zinc-900 rounded px-3 py-2 hover:border-zinc-700 transition-colors';
+                row.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <div class="w-2 h-2 ${impactDot} rounded-full shrink-0"></div>
+                            <span class="text-white font-bold truncate" title="${ev.title}">${ev.title}</span>
+                        </div>
+                        <span class="${impactColor} text-[9px] font-bold uppercase tracking-widest shrink-0 ml-2">${ev.impact}</span>
+                    </div>
+                    <div class="flex gap-4 mt-1 text-[9px] text-zinc-500 pl-4">
+                        <span>📅 ${ev.date}</span>
+                        <span>⏰ ${ev.time}</span>
+                        <span>📊 F: ${ev.forecast || 'N/A'}</span>
+                        <span>📈 P: ${ev.previous || 'N/A'}</span>
+                    </div>
+                `;
+                container.appendChild(row);
+            });
+        } else {
+            container.innerHTML = '<div class="text-zinc-600 text-center text-[10px] uppercase tracking-widest py-6">No scheduled high-impact events.</div>';
+        }
+    } catch (e) {
+        console.error('Calendar Error:', e);
+    }
+}
+
+// ==========================================
+// --- PANEL 12: MACRO NEWS FEED ---
+// ==========================================
+
+window._newsData = null;
+
+async function loadMacroNews() {
+    try {
+        const res = await fetch(`${API_BASE}/api/macro_news`);
+        const xmlText = await res.text();
+        
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+        const articles = Array.from(xmlDoc.getElementsByTagName('article'));
+        
+        const container = document.getElementById('newsContainer');
+        
+        if (articles.length > 0) {
+            window._newsData = articles.map(a => ({
+                title: a.getAttribute('title'),
+                published: a.getAttribute('published'),
+                link: a.getAttribute('link')
+            }));
+            
+            container.innerHTML = '';
+            
+            articles.forEach(article => {
+                const title = article.getAttribute('title') || 'No Title';
+                const published = article.getAttribute('published') || '';
+                const link = article.getAttribute('link') || '#';
+                
+                const row = document.createElement('a');
+                row.href = link;
+                row.target = '_blank';
+                row.className = 'block bg-zinc-950 border border-zinc-900 rounded px-3 py-2 hover:border-blue-900 transition-colors group cursor-pointer';
+                row.innerHTML = `
+                    <div class="text-zinc-300 text-[11px] group-hover:text-blue-400 transition-colors leading-tight">${title}</div>
+                    <div class="text-zinc-600 text-[8px] mt-1 uppercase tracking-widest">${published}</div>
+                `;
+                container.appendChild(row);
+            });
+        } else {
+            container.innerHTML = '<div class="text-zinc-600 text-center text-[10px] uppercase tracking-widest py-6">No headlines available.</div>';
+        }
+    } catch (e) {
+        console.error('News Error:', e);
+    }
+}
+
+// ==========================================
+// --- PANEL 13: FED LIQUIDITY PLUMBING ---
+// ==========================================
+
+let liquidityChartInstance = null;
+window._liquidityData = null;
+
+async function loadFedLiquidity() {
+    try {
+        const res = await fetch(`${API_BASE}/api/macro_ledger_full?limit=200`);
+        const json = await res.json();
+        
+        if (json.status === 'success' && json.data) {
+            const d = json.data;
+            window._liquidityData = { labels: d.labels, rrp: d.reverse_repo_bn, walcl: d.fed_balance_sheet_bn };
+            
+            // Update header stats
+            const lastIdx = d.labels.length - 1;
+            const rrpEl = document.getElementById('liveRRP');
+            const walclEl = document.getElementById('liveWALCL');
+            
+            if (rrpEl && d.reverse_repo_bn[lastIdx] != null) rrpEl.innerText = `$${d.reverse_repo_bn[lastIdx].toFixed(0)}B`;
+            if (walclEl && d.fed_balance_sheet_bn[lastIdx] != null) walclEl.innerText = `$${d.fed_balance_sheet_bn[lastIdx].toFixed(0)}B`;
+            
+            // Render chart
+            const ctx = document.getElementById('liquidityChart').getContext('2d');
+            if (liquidityChartInstance) liquidityChartInstance.destroy();
+            
+            liquidityChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: d.labels,
+                    datasets: [
+                        {
+                            label: 'Reverse Repo ($B)',
+                            data: d.reverse_repo_bn,
+                            borderColor: '#38bdf8',
+                            backgroundColor: 'rgba(56, 189, 248, 0.05)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 0,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Fed Balance Sheet ($B)',
+                            data: d.fed_balance_sheet_bn,
+                            borderColor: '#f59e0b',
+                            borderWidth: 2,
+                            tension: 0.3,
+                            pointRadius: 0,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    devicePixelRatio: 3,
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { labels: { color: '#a1a1aa', boxWidth: 10, font: { size: 9 } } },
+                        tooltip: {
+                            backgroundColor: 'rgba(9, 9, 11, 0.95)',
+                            borderColor: '#27272a',
+                            borderWidth: 1,
+                            padding: 10,
+                            titleColor: '#fff',
+                            bodyColor: '#a1a1aa',
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: $${context.parsed.y?.toFixed(1) || 'N/A'}B`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#a1a1aa', font: { size: 8 }, maxTicksLimit: 8 } },
+                        y: {
+                            position: 'left',
+                            grid: { color: 'rgba(56, 189, 248, 0.05)' },
+                            ticks: { color: '#38bdf8', font: { size: 9 }, callback: (v) => '$' + v + 'B' },
+                            title: { display: false }
+                        },
+                        y1: {
+                            position: 'right',
+                            grid: { display: false },
+                            ticks: { color: '#f59e0b', font: { size: 9 }, callback: (v) => '$' + v + 'B' },
+                            title: { display: false }
+                        }
+                    }
+                }
+            });
+        }
+    } catch (e) {
+        console.error('Liquidity Error:', e);
+    }
+}
+
+// ==========================================
+// --- PANEL 14: SHANGHAI-COMEX ARB SPREAD ---
+// ==========================================
+
+let arbSpreadChartInstance = null;
+window._arbSpreadData = null;
+
+async function loadShfeArbSpread() {
+    try {
+        const res = await fetch(`${API_BASE}/api/macro_ledger_full?limit=200`);
+        const json = await res.json();
+        
+        if (json.status === 'success' && json.data) {
+            const d = json.data;
+            window._arbSpreadData = { labels: d.labels, shfe: d.shfe_silver_usd, comex: d.comex_silver, premium: d.shfe_premium };
+            
+            // Update header stats
+            const lastIdx = d.labels.length - 1;
+            const shfeEl = document.getElementById('liveShfe');
+            const comexEl = document.getElementById('liveComexSilver');
+            const premEl = document.getElementById('liveShfePremium');
+            
+            if (shfeEl && d.shfe_silver_usd[lastIdx] != null) shfeEl.innerText = `$${d.shfe_silver_usd[lastIdx].toFixed(2)}`;
+            if (comexEl && d.comex_silver[lastIdx] != null) comexEl.innerText = `$${d.comex_silver[lastIdx].toFixed(2)}`;
+            if (premEl && d.shfe_premium[lastIdx] != null) {
+                const prem = d.shfe_premium[lastIdx];
+                premEl.innerText = `${prem >= 0 ? '+' : ''}$${prem.toFixed(2)}`;
+                premEl.className = prem >= 0 
+                    ? 'text-green-400 font-bold text-sm font-mono drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]'
+                    : 'text-red-400 font-bold text-sm font-mono';
+            }
+            
+            // Render chart
+            const ctx = document.getElementById('arbSpreadChart').getContext('2d');
+            if (arbSpreadChartInstance) arbSpreadChartInstance.destroy();
+            
+            arbSpreadChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: d.labels,
+                    datasets: [
+                        {
+                            label: 'SHFE Silver (USD/oz)',
+                            data: d.shfe_silver_usd,
+                            borderColor: '#f43f5e',
+                            borderWidth: 2,
+                            tension: 0.3,
+                            pointRadius: 0,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'COMEX Silver',
+                            data: d.comex_silver,
+                            borderColor: 'rgba(255, 255, 255, 0.7)',
+                            borderWidth: 2,
+                            tension: 0.3,
+                            pointRadius: 0,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Arb Premium ($/oz)',
+                            data: d.shfe_premium,
+                            borderColor: '#22c55e',
+                            backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 0,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    devicePixelRatio: 3,
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { labels: { color: '#a1a1aa', boxWidth: 10, font: { size: 9 } } },
+                        tooltip: {
+                            backgroundColor: 'rgba(9, 9, 11, 0.95)',
+                            borderColor: '#27272a',
+                            borderWidth: 1,
+                            padding: 10,
+                            titleColor: '#fff',
+                            bodyColor: '#a1a1aa',
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: $${context.parsed.y?.toFixed(2) || 'N/A'}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#a1a1aa', font: { size: 8 }, maxTicksLimit: 8 } },
+                        y: {
+                            position: 'left',
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: '#a1a1aa', font: { size: 9 }, callback: (v) => '$' + v.toFixed(0) }
+                        },
+                        y1: {
+                            position: 'right',
+                            grid: { display: false },
+                            ticks: { color: '#22c55e', font: { size: 9 }, callback: (v) => '$' + v.toFixed(2) }
+                        }
+                    }
+                }
+            });
+        }
+    } catch (e) {
+        console.error('Arb Spread Error:', e);
+    }
+}
+
+// ==========================================
+// --- ⚡ DUMP ALL DATA ENGINE ---
+// ==========================================
+
+// Helper: get the last non-null value from an array
+function _lastValid(arr) {
+    if (!arr || !Array.isArray(arr)) return null;
+    for (let i = arr.length - 1; i >= 0; i--) {
+        if (arr[i] != null) return arr[i];
+    }
+    return null;
+}
+
+// Helper: get the last N non-null {label, value} pairs from parallel arrays
+function _lastNEntries(labels, values, n = 5) {
+    if (!labels || !values) return [];
+    const entries = [];
+    for (let i = labels.length - 1; i >= 0 && entries.length < n; i--) {
+        if (values[i] != null) {
+            entries.unshift({ date: labels[i], value: typeof values[i] === 'number' ? Math.round(values[i] * 100) / 100 : values[i] });
+        }
+    }
+    return entries;
+}
+
+// Helper: extract latest snapshot from institutional flow arrays
+function _extractLatestFlow(flowData) {
+    if (!flowData?.data) return null;
+    const d = flowData.data;
+    const idx = (d.labels?.length || 1) - 1;
+    return {
+        ticker: d.ticker,
+        scan_date: d.labels?.[idx],
+        spot_price: d.spot_price?.[idx],
+        dp_sentiment: d.dp_sentiment?.[idx],
+        dp_vwap: d.dp_vwap?.[idx],
+        dp_total_vol: d.dp_total_vol?.[idx],
+        dp_notional_usd: d.dp_notional?.[idx],
+        dp_largest_block: d.dp_largest_block?.[idx],
+        dp_bull_vol: d.dp_bull_vol?.[idx],
+        dp_bear_vol: d.dp_bear_vol?.[idx],
+        gex_call_wall: d.gex_call_wall?.[idx],
+        gex_put_wall: d.gex_put_wall?.[idx],
+        gex_zero_gamma: d.gex_zero_gamma?.[idx]
+    };
+}
+
+// Helper: extract latest arb entry
+function _extractLatestArb(arbData) {
+    if (!arbData?.data) return null;
+    const d = arbData.data;
+    const idx = (d.labels?.length || 1) - 1;
+    return {
+        date: d.labels?.[idx],
+        spot_price: d.spot?.[idx],
+        avg_premium_pct: d.avg_pct?.[idx],
+        avg_retail_price: d.avg_price?.[idx],
+        cheapest_price: d.cheapest_dollar != null ? (d.spot?.[idx] != null ? d.spot[idx] + (d.cheapest_dollar?.[idx] || 0) : null) : null,
+        cheapest_premium_pct: d.cheapest_pct?.[idx],
+        cheapest_premium_dollar: d.cheapest_dollar?.[idx],
+        recent_trend_5d: _lastNEntries(d.labels, d.avg_pct, 5)
+    };
+}
+
+// Helper: flatten dark pool response
+function _flattenDarkPool(dpData) {
+    if (!dpData?.data) return null;
+    const d = dpData.data;
+    return {
+        ticker: d.ticker,
+        sentiment: d.sentiment?.bias,
+        vwap: Math.round((d.vwap_price || 0) * 100) / 100,
+        total_block_volume: d.total_block_volume,
+        total_notional_usd: d.total_notional_usd,
+        largest_single_block: d.largest_single_block,
+        bull_volume: d.sentiment?.bull_volume,
+        bear_volume: d.sentiment?.bear_volume,
+        recent_prints: (d.recent_prints || []).slice(0, 5)
+    };
+}
+
+// Helper: flatten GEX response
+function _flattenGex(gexData) {
+    if (!gexData?.data) return null;
+    const d = gexData.data;
+    // Only keep the top 5 positive and top 5 negative gamma strikes for compactness
+    const gammaEntries = (d.strikes || []).map((s, i) => ({ strike: s, gamma: d.gamma?.[i] || 0 }));
+    const sorted = [...gammaEntries].sort((a, b) => b.gamma - a.gamma);
+    const topPositive = sorted.filter(e => e.gamma > 0).slice(0, 5);
+    const topNegative = sorted.filter(e => e.gamma < 0).slice(-5);
+    return {
+        spot: d.spot,
+        call_wall: d.callWall,
+        put_wall: d.putWall,
+        zero_gamma: d.zeroGamma,
+        regime: d.spot > d.callWall ? 'ABOVE_CALL_WALL' : d.spot < d.putWall ? 'BELOW_PUT_WALL' : 'BETWEEN_WALLS',
+        top_positive_gamma: topPositive,
+        top_negative_gamma: topNegative
+    };
+}
+
+// Helper: parse XML news to clean array
+function _parseNewsXml(xmlText) {
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(xmlText, 'text/xml');
+        return Array.from(doc.getElementsByTagName('article')).map(a => ({
+            title: a.getAttribute('title'),
+            published: a.getAttribute('published'),
+            link: a.getAttribute('link')
+        }));
+    } catch { return []; }
+}
+
+// Helper: parse Eagle prices XML
+function _parseEaglesXml(xmlText) {
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(xmlText, 'text/xml');
+        return Array.from(doc.getElementsByTagName('listing')).slice(0, 10).map(node => ({
+            seller: node.getAttribute('seller'),
+            price: node.getAttribute('price'),
+            premium: node.getAttribute('premium'),
+            shipping: node.getAttribute('shipping'),
+            link: node.getAttribute('link')
+        }));
+    } catch { return []; }
+}
+
+async function dumpAllData() {
+    const btnText = document.getElementById('dumpBtnText');
+    const progress = document.getElementById('dumpProgress');
+    const btn = document.getElementById('btnDumpAll');
+    
+    btnText.innerText = '⏳ AGGREGATING...';
+    btn.disabled = true;
+    progress.style.width = '0%';
+    log('Initiating full system data dump — aggregating ALL sources...', 'cmd');
+    
+    // Define all fetch targets
+    const fetches = [
+        { key: 'macro_ledger_full', url: '/api/macro_ledger_full?limit=500', type: 'json' },
+        { key: 'vmri_history', url: '/api/vmri_history', type: 'json' },
+        { key: 'institutional_flow_slv', url: '/api/institutional_history?ticker=SLV&limit=500', type: 'json' },
+        { key: 'institutional_flow_spy', url: '/api/institutional_history?ticker=SPY&limit=500', type: 'json' },
+        { key: 'darkpool_slv_live', url: '/api/darkpool?ticker=SLV', type: 'json' },
+        { key: 'darkpool_spy_live', url: '/api/darkpool?ticker=SPY', type: 'json' },
+        { key: 'gex_slv', url: '/api/gex?ticker=SLV', type: 'json' },
+        { key: 'gex_spy', url: '/api/gex?ticker=SPY', type: 'json' },
+        { key: 'arbitrage_history', url: '/api/arbitrage_history?limit=200', type: 'json' },
+        { key: 'comex_inventory', url: '/api/inventory_data', type: 'json' },
+        { key: 'macro_calendar', url: '/api/macro_calendar', type: 'json' },
+        { key: 'war_room_live', url: '/api/war_room', type: 'json_post', body: { dxy_shift: 0, tnx_shift: 0, oas_shift: 0, vix_shift_pct: 0 } },
+        { key: 'tactical_ruling_xml', url: '/api/dump', type: 'text' },
+        { key: 'macro_news', url: '/api/macro_news', type: 'xml' },
+        { key: 'silver_eagle_prices', url: '/api/silver_eagle_prices', type: 'xml' },
+    ];
+    
+    let completed = 0;
+    const total = fetches.length;
+    
+    // Fan out ALL requests in parallel
+    const rawResults = {};
+    const results = await Promise.allSettled(fetches.map(async (f) => {
+        try {
+            let res;
+            if (f.type === 'json_post') {
+                res = await fetch(`${API_BASE}${f.url}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(f.body)
+                });
+            } else {
+                res = await fetch(`${API_BASE}${f.url}`);
+            }
+            
+            completed++;
+            progress.style.width = `${(completed / total) * 100}%`;
+            
+            if (f.type === 'text' || f.type === 'xml') {
+                const text = await res.text();
+                rawResults[f.key] = { data: text, format: f.type };
+                return f.key;
+            } else {
+                const json = await res.json();
+                rawResults[f.key] = { data: json, format: 'json' };
+                return f.key;
+            }
+        } catch (e) {
+            completed++;
+            progress.style.width = `${(completed / total) * 100}%`;
+            rawResults[f.key] = { data: { error: e.message }, format: 'error' };
+            return f.key;
+        }
+    }));
+    
+    let successCount = Object.values(rawResults).filter(r => r.format !== 'error').length;
+    let errorCount = Object.values(rawResults).filter(r => r.format === 'error').length;
+    
+    // ==========================================
+    // POST-PROCESS: Extract latest snapshot only
+    // ==========================================
+    
+    const clean = {
+        _meta: {
+            system: "VladHQ OptionsWhale Terminal",
+            dump_timestamp: new Date().toISOString(),
+            purpose: "LATEST system state snapshot for LLM analysis. All values are the most recent readings from live infrastructure.",
+            sources_succeeded: successCount,
+            sources_failed: errorCount
+        }
+    };
+    
+    // --- 1. MACRO SNAPSHOT (latest values only from the 25-column ledger) ---
+    const ml = rawResults.macro_ledger_full?.data;
+    if (ml?.status === 'success' && ml.data) {
+        const d = ml.data;
+        const lastLabel = _lastValid(d.labels);
+        clean.macro_snapshot = {
+            _note: "Latest macro readings from the master ledger (most recent non-null value for each indicator)",
+            as_of: lastLabel,
+            vmri_score: _lastValid(d.vmri_score),
+            threat_tier: _lastValid(d.threat_tier),
+            dxy: _lastValid(d.dxy),
+            dxy_change: _lastValid(d.dxy_change),
+            ten_y_yield: _lastValid(d.ten_y_yield),
+            zn_futures: _lastValid(d.zn_futures),
+            high_yield_oas: _lastValid(d.high_yield_oas),
+            vix: _lastValid(d.vix),
+            vix_change: _lastValid(d.vix_change),
+            gold_price: _lastValid(d.gold_price),
+            gold_silver_ratio: _lastValid(d.gold_silver_ratio) ? Math.round(_lastValid(d.gold_silver_ratio) * 100) / 100 : null,
+            comex_silver: _lastValid(d.comex_silver),
+            shfe_silver_usd: _lastValid(d.shfe_silver_usd) ? Math.round(_lastValid(d.shfe_silver_usd) * 100) / 100 : null,
+            shfe_premium: _lastValid(d.shfe_premium) ? Math.round(_lastValid(d.shfe_premium) * 100) / 100 : null,
+            wti_crude: _lastValid(d.wti_crude),
+            brent_crude: _lastValid(d.brent_crude),
+            reverse_repo_bn: _lastValid(d.reverse_repo_bn),
+            fed_balance_sheet_bn: _lastValid(d.fed_balance_sheet_bn),
+            retail_silver_cheapest: _lastValid(d.retail_silver_cheapest),
+            retail_silver_avg: _lastValid(d.retail_silver_avg),
+            silver_oi: _lastValid(d.silver_oi),
+            paper_physical_ratio: _lastValid(d.paper_physical_ratio),
+            gex: _lastValid(d.gex),
+            dix: _lastValid(d.dix)
+        };
+        // Add 5-day VMRI trend
+        clean.macro_snapshot.vmri_5d_trend = _lastNEntries(d.labels, d.vmri_score, 5);
+    }
+    
+    // --- 2. VMRI CONTEXT (latest only, skip if macro_snapshot already has it) ---
+    const vh = rawResults.vmri_history?.data;
+    if (vh?.scores) {
+        const idx = vh.scores.length - 1;
+        clean.vmri_latest = {
+            score: _lastValid(vh.scores),
+            primary_driver: _lastValid(vh.primary_driver),
+            momentum_5: _lastValid(vh.momentum_5),
+            sma_10: _lastValid(vh.sma_10)
+        };
+    }
+    
+    // --- 3. SLV INSTITUTIONAL FLOW (latest entry only) ---
+    clean.slv_institutional = _extractLatestFlow(rawResults.institutional_flow_slv?.data);
+    
+    // --- 4. SPY INSTITUTIONAL FLOW (latest entry only) ---
+    clean.spy_institutional = _extractLatestFlow(rawResults.institutional_flow_spy?.data);
+    
+    // --- 5. DARK POOL LIVE (flattened summaries) ---
+    clean.darkpool_slv = _flattenDarkPool(rawResults.darkpool_slv_live?.data);
+    clean.darkpool_spy = _flattenDarkPool(rawResults.darkpool_spy_live?.data);
+    
+    // --- 6. GEX PROFILES (compact) ---
+    clean.gex_slv = _flattenGex(rawResults.gex_slv?.data);
+    clean.gex_spy = _flattenGex(rawResults.gex_spy?.data);
+    
+    // --- 7. PHYSICAL ARB (latest only) ---
+    clean.silver_arb = _extractLatestArb(rawResults.arbitrage_history?.data);
+    
+    // --- 8. COMEX INVENTORY (already compact) ---
+    const inv = rawResults.comex_inventory?.data;
+    if (inv?.status === 'success') {
+        clean.comex_inventory = inv.data || inv;
+    }
+    
+    // --- 9. MACRO CALENDAR (pass through, already compact) ---
+    const cal = rawResults.macro_calendar?.data;
+    if (cal?.status === 'success') {
+        clean.macro_calendar = cal.events || [];
+    }
+    
+    // --- 10. WAR ROOM (live environment snapshot) ---
+    const wr = rawResults.war_room_live?.data;
+    if (wr) {
+        // The war room response has a nested structure, extract the key fields
+        clean.war_room = wr.data || wr;
+    }
+    
+    // --- 11. TACTICAL RULING XML (keep full — it's the core signal) ---
+    if (rawResults.tactical_ruling_xml?.format !== 'error') {
+        clean.tactical_ruling_xml = rawResults.tactical_ruling_xml?.data;
+    }
+    
+    // --- 12. MACRO NEWS (parsed to clean array) ---
+    if (rawResults.macro_news?.data) {
+        clean.macro_news = _parseNewsXml(rawResults.macro_news.data);
+    }
+    
+    // --- 13. SILVER EAGLE PRICES ---
+    if (rawResults.silver_eagle_prices?.data) {
+        clean.silver_eagle_listings = _parseEaglesXml(rawResults.silver_eagle_prices.data);
+    }
+    
+    // --- 14. CACHED UI STATE ---
+    clean.ui_state = {
+        paper_physical_ratio: document.getElementById('livePaperRatio')?.innerText || null,
+        paper_physical_status: document.getElementById('liveRatioStatusBanner')?.innerText || null,
+        war_room_vmri: document.getElementById('warVmriScore')?.innerText || null,
+        war_room_status: document.getElementById('warStatus')?.innerText || null,
+        api_status: document.getElementById('apiStatus')?.innerText || null
+    };
+    
+    // Format and display
+    const jsonStr = JSON.stringify(clean, null, 2);
+    
+    btnText.innerText = '⚡ DUMP ALL DATA';
+    btn.disabled = false;
+    progress.style.width = '100%';
+    setTimeout(() => { progress.style.width = '0%'; }, 2000);
+    
+    log(`Data dump complete: ${successCount}/${total} sources → ${(jsonStr.length / 1024).toFixed(0)}KB (compressed from raw)`, 'success');
+    
+    openCopyModal(
+        `⚡ SYSTEM SNAPSHOT — ${successCount}/${total} SOURCES (${(jsonStr.length / 1024).toFixed(0)}KB)`,
+        jsonStr,
+        'json'
+    );
 }

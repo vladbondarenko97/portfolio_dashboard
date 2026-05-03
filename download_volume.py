@@ -10,18 +10,15 @@ from config import required_env
 LOGIN_URL = "https://login.cmegroup.com/sso/accountstatus/showAuth.action"
 STATIC_LATEST_URL = "https://www.cmegroup.com/ftp/daily_volume/daily_volume.xlsx"
 
-USERNAME = required_env("CME_LOGIN_USERNAME")
-PASSWORD = required_env("CME_LOGIN_PASSWORD")
+from config import DATA_DIR, CME_LOGIN_USERNAME, CME_LOGIN_PASSWORD
 
-# Saves to a folder named 'CME_Data' on your Mac's Desktop
-SAVE_DIR = os.path.join(os.path.expanduser("~"), "Desktop", "CME_Data")
+USERNAME = CME_LOGIN_USERNAME
+PASSWORD = CME_LOGIN_PASSWORD
+
+SAVE_DIR = DATA_DIR
 STATE_FILE = os.path.join(SAVE_DIR, "state.json")
 
-def clear_terminal():
-    os.system('cls' if os.name == 'nt' else 'clear')
-
 def download_latest_cme_files(num_files_to_get=30):
-    clear_terminal()
     print(f"CME VOLUME DOWNLOADER V4.0 (30-DAY / MONTHLY ARCHIVE)")
     print("=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=\n")
 

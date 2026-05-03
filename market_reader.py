@@ -10,15 +10,15 @@ from datetime import datetime, timedelta, timezone
 from scipy.stats import norm
 
 # --- CONFIGURATION ---
-DATA_DIR = os.path.join(os.path.expanduser("~"), "Desktop", "CME_Data")
+from config import DATA_DIR, DATABENTO_API_KEY
+
 TODAY_STR = datetime.now().strftime("%b-%d-%y") 
 
 DASHBOARD_FILE = os.path.join(DATA_DIR, TODAY_STR, "volume_dashboard.txt")
 TACTICAL_FILE = os.path.join(DATA_DIR, TODAY_STR, "tactical_ruling.txt")
 
 # Initialize Databento
-DB_API_KEY = required_env("DATABENTO_API_KEY", alt_name="DB_API_KEY")
-db_client = db.Historical(DB_API_KEY)
+db_client = db.Historical(DATABENTO_API_KEY)
 
 #--- BLACK-SCHOLES GAMMA CALCULATOR ---
 def calculate_gamma(S, K, T, r, sigma):
@@ -898,7 +898,7 @@ def analyze_market():
 🎯 ALGORITHMIC EXECUTION ENGINE:
 {engine_final}
 """
-    print(report)
+    return report
 
 if __name__ == "__main__":
-    analyze_market()
+    print(analyze_market())

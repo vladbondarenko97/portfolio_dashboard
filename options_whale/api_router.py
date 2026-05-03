@@ -1607,6 +1607,185 @@ def api_macro_news():
     except Exception as e:
         return Response(f"<error>System Error: {str(e)}</error>", mimetype='application/xml', status=500)
 
+# ==========================================
+# --- INSTITUTIONAL FLOW HISTORY API ---
+# ==========================================
+
+INSTITUTIONAL_LEDGER_CSV = os.path.join(DATA_DIR, "equities_darkpool_gex_ledger.csv")
+
+@app.route('/api/institutional_history')
+def get_institutional_history():
+    """Returns time-series data from the institutional scanner ledger (SPY + SLV dark pool + GEX)."""
+    ticker = request.args.get('ticker', 'SLV').upper()
+    limit = int(request.args.get('limit', 100))
+    
+    try:
+        if not os.path.exists(INSTITUTIONAL_LEDGER_CSV):
+            return jsonify({"status": "error", "message": "Institutional ledger not found."}), 404
+        
+        df = pd.read_csv(INSTITUTIONAL_LEDGER_CSV)
+        
+        if df.empty:
+            return jsonify({"status": "error", "message": "Ledger is empty."}), 404
+        
+        # Filter by ticker (SPY or SLV)
+        df = df[df['Ticker'].str.upper() == ticker].copy()
+        
+        if df.empty:
+            return jsonify({"status": "error", "message": f"No data found for {ticker}."}), 404
+        
+        df = df.tail(limit)
+        
+        # Clean NaN values for JSON serialization
+        df = df.where(pd.notnull(df), None)
+        
+        # Build the payload
+        payload = {
+            "ticker": ticker,
+            "labels": df['Date'].tolist(),
+            "spot_price": df['Spot_Price'].tolist(),
+            "dp_sentiment": df['DP_Sentiment'].tolist(),
+            "dp_total_vol": df['DP_Total_Vol'].tolist(),
+            "dp_notional": df['DP_Notional_USD'].tolist(),
+            "dp_largest_block": df['DP_Largest_Block'].tolist(),
+            "dp_vwap": df['DP_VWAP'].tolist(),
+            "dp_bull_vol": df['DP_Bull_Vol'].tolist(),
+            "dp_bear_vol": df['DP_Bear_Vol'].tolist(),
+            "gex_call_wall": df['GEX_Call_Wall'].tolist(),
+            "gex_put_wall": df['GEX_Put_Wall'].tolist(),
+            "gex_zero_gamma": df['GEX_Zero_Gamma'].tolist()
+        }
+        
+        return jsonify({"status": "success", "data": payload})
+    
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ==========================================
+# --- MACRO CALENDAR API ---
+# ==========================================
+
+@app.route('/api/macro_calendar')
+def get_macro_calendar():
+    """Extracts upcoming macro catalyst events from the latest tactical_ruling.txt XML."""
+    try:
+        base_dir = os.path.expanduser("~/Desktop/CME_Data/")
+        
+        if not os.path.exists(base_dir):
+            return jsonify({"status": "error", "message": "CME_Data directory not found."}), 404
+        
+        # Find the latest folder with a tactical_ruling.txt
+        subdirs = [os.path.join(base_dir, d) for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))]
+        subdirs.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+        
+        tactical_content = None
+        for folder in subdirs:
+            tac_path = os.path.join(folder, "tactical_ruling.txt")
+            if os.path.exists(tac_path):
+                with open(tac_path, 'r', encoding='utf-8') as f:
+                    tactical_content = f.read()
+                break
+        
+        if not tactical_content:
+            return jsonify({"status": "error", "message": "No tactical_ruling.txt found."}), 404
+        
+        # Parse the XML
+        clean_content = re.sub(r'<\?xml[^>]*\?>', '', tactical_content).strip()
+        root = ET.fromstring(clean_content)
+        
+        events = []
+        calendar_node = root.find(".//upcoming_macro_events")
+        
+        if calendar_node is not None:
+            for event in calendar_node.findall("event"):
+                events.append({
+                    "date": event.get("date", ""),
+                    "time": event.get("time", ""),
+                    "impact": event.get("impact", ""),
+                    "title": event.get("title", ""),
+                    "forecast": event.get("forecast", ""),
+                    "previous": event.get("previous", "")
+                })
+        
+        return jsonify({"status": "success", "events": events})
+    
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ==========================================
+# --- FULL MACRO LEDGER API ---
+# ==========================================
+
+@app.route('/api/macro_ledger_full')
+def get_macro_ledger_full():
+    """Returns all 25 columns from the macro master ledger for full overlay charting."""
+    limit = int(request.args.get('limit', 200))
+    
+    try:
+        if not os.path.exists(LEDGER_CSV):
+            return jsonify({"status": "error", "message": "Macro ledger not found."}), 404
+        
+        df = pd.read_csv(LEDGER_CSV)
+        df = df.dropna(how='all')
+        df = df.dropna(subset=['Datetime'])
+        df['Datetime'] = pd.to_datetime(df['Datetime'], format='mixed')
+        df = df.dropna(subset=['Datetime'])
+        df = df.sort_values('Datetime').tail(limit)
+        
+        labels = df['Datetime'].dt.strftime('%Y-%m-%d %H:%M').tolist()
+        
+        def safe_list(col_name):
+            """Convert a column to a clean list, replacing NaN/inf with None."""
+            if col_name not in df.columns:
+                return [None] * len(df)
+            vals = []
+            for val in df[col_name].tolist():
+                if pd.isna(val) or val in ["NaN", "nan", "None", ""]:
+                    vals.append(None)
+                else:
+                    try:
+                        f = float(val)
+                        if math.isnan(f) or math.isinf(f):
+                            vals.append(None)
+                        else:
+                            vals.append(f)
+                    except (ValueError, TypeError):
+                        vals.append(None)
+            return vals
+        
+        payload = {
+            "labels": labels,
+            "vmri_score": safe_list("VMRI_Score"),
+            "threat_tier": df.get("Threat_Tier", pd.Series(dtype=str)).fillna("N/A").tolist(),
+            "dxy": safe_list("DXY"),
+            "dxy_change": safe_list("DXY_Change"),
+            "ten_y_yield": safe_list("10Y_Yield"),
+            "zn_futures": safe_list("ZN_Futures"),
+            "high_yield_oas": safe_list("High_Yield_OAS"),
+            "vix": safe_list("VIX"),
+            "vix_change": safe_list("VIX_Change"),
+            "wti_crude": safe_list("WTI_Crude"),
+            "brent_crude": safe_list("Brent_Crude"),
+            "gold_price": safe_list("Gold_Price"),
+            "gold_silver_ratio": safe_list("Gold_Silver_Ratio"),
+            "shfe_silver_usd": safe_list("SHFE_Silver_USD"),
+            "comex_silver": safe_list("COMEX_Silver"),
+            "shfe_premium": safe_list("SHFE_Premium"),
+            "gex": safe_list("GEX"),
+            "dix": safe_list("DIX"),
+            "reverse_repo_bn": safe_list("Reverse_Repo_BN"),
+            "fed_balance_sheet_bn": safe_list("Fed_Balance_Sheet_BN"),
+            "retail_silver_cheapest": safe_list("Retail_Silver_Cheapest"),
+            "retail_silver_avg": safe_list("Retail_Silver_Avg"),
+            "silver_oi": safe_list("Silver_OI"),
+            "paper_physical_ratio": safe_list("Paper_Physical_Ratio")
+        }
+        
+        return jsonify({"status": "success", "data": payload})
+    
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 if __name__ == "__main__":
     # Bound to Port 8080 as requested
     app.run(host='0.0.0.0', port=8080)

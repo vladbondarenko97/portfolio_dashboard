@@ -4,12 +4,11 @@ import pandas as pd
 from datetime import datetime
 import sys
 import yfinance as yf
-import requests
+from core.api_client import api_client
 import subprocess
 
 # --- CONFIGURATION ---
-GOLD_API_KEY = required_env("GOLD_API_KEY")
-DATA_DIR = os.path.join(os.path.expanduser("~"), "Desktop", "CME_Data")
+from config import DATA_DIR, GOLD_API_KEY
 
 if len(sys.argv) > 1:
     DAILY_DIR = sys.argv[1]
@@ -59,11 +58,10 @@ def fetch_market_prices():
     # SPOT SILVER (GoldAPI.io)
     try:
         headers = {"x-access-token": GOLD_API_KEY, "Content-Type": "application/json"}
-        res = requests.get("https://www.goldapi.io/api/XAG/USD", headers=headers, timeout=5)
-        if res.status_code == 200:
-            j = res.json()
-            data["SPOT"]["price"] = j.get("price", 0.0)
-            data["SPOT"]["change"] = j.get("ch", 0.0)
+        res = api_client.get("https://www.goldapi.io/api/XAG/USD", headers=headers, timeout=5)
+        j = res.json()
+        data["SPOT"]["price"] = j.get("price", 0.0)
+        data["SPOT"]["change"] = j.get("ch", 0.0)
     except:
         pass
     # USD/CNY Rate
@@ -93,7 +91,7 @@ def fetch_market_prices():
         pass
     return data
 
-def aggregate_data_to_text():
+def aggregate_data_to_text(volume_df, inventory_df, tactical_text=""):
     import xml.etree.ElementTree as ET
     root = ET.Element("dashboard")
 
@@ -163,18 +161,17 @@ def aggregate_data_to_text():
                 entry.set("volume", str(row['Volume']))
                 entry.set("oi_change", str(row['OI_Change']))
 
-        # COMEX Inventory
-        inv_file = os.path.join(DATA_DIR, "comex_inventory_history.csv")
-        if os.path.exists(inv_file):
-            inv_df = pd.read_csv(inv_file)
-            inv_df['Date'] = pd.to_datetime(inv_df['Date'])
-            inv_elem = ET.SubElement(root, "comex_inventory")
-            for _, row in inv_df.iterrows():
-                entry = ET.SubElement(inv_elem, "day")
-                entry.set("date", row['Date'].strftime('%Y-%m-%d'))
-                entry.set("eligible", f"{row['Eligible']:.2f}")
-                entry.set("registered", f"{row['Registered']:.2f}")
-                entry.set("total_change", f"{row['Total_Change']:+.0f}")
+    # COMEX Inventory
+    if inventory_df is not None and not inventory_df.empty:
+        inv_df = inventory_df.copy()
+        inv_df['Date'] = pd.to_datetime(inv_df['Date'])
+        inv_elem = ET.SubElement(root, "comex_inventory")
+        for _, row in inv_df.iterrows():
+            entry = ET.SubElement(inv_elem, "day")
+            entry.set("date", row['Date'].strftime('%Y-%m-%d'))
+            entry.set("eligible", f"{row['Eligible']:.2f}")
+            entry.set("registered", f"{row['Registered']:.2f}")
+            entry.set("total_change", f"{row['Total_Change']:+.0f}")
 
     # Market Prices
     prices = fetch_market_prices()
@@ -187,9 +184,8 @@ def aggregate_data_to_text():
             sub.text = str(v)
 
     # Vaults (latest)
-    inv_file = os.path.join(DATA_DIR, "comex_inventory_history.csv")
-    if os.path.exists(inv_file):
-        inv = pd.read_csv(inv_file).iloc[-1]
+    if inventory_df is not None and not inventory_df.empty:
+        inv = inventory_df.iloc[-1]
         vaults_elem = ET.SubElement(root, "latest_vaults")
         vaults_elem.set("registered", f"{inv['Registered']:.1f}")
         vaults_elem.set("eligible", f"{inv['Eligible']:.1f}")
@@ -197,11 +193,8 @@ def aggregate_data_to_text():
         cv_fmt = f"{cv/1e6:+.1f}M oz" if abs(cv) >= 1e6 else f"{cv:+,.0f} oz"
         vaults_elem.set("daily_change", cv_fmt)
 
-    # --- Tactical Ruling Section from tactical_ruling.txt ---
-    tactical_path = os.path.join(DAILY_DIR, "tactical_ruling.txt")
-    if os.path.exists(tactical_path):
-        with open(tactical_path, 'r') as tf:
-            tactical_text = tf.read().strip()
+    # --- Tactical Ruling Section ---
+    if tactical_text:
         try:
             # Parse the file as actual XML nodes instead of a raw string
             tactical_parsed = ET.fromstring(tactical_text)

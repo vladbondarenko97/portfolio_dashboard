@@ -1,8 +1,9 @@
 import smtplib
 import subprocess
 import os
+import csv
 from config import required_env
-import requests
+from core.api_client import api_client
 import xml.etree.ElementTree as ET
 from email.message import EmailMessage
 from email.utils import make_msgid
@@ -12,18 +13,19 @@ from datetime import datetime, timedelta
 TOPIC = 'vladhq_alerts'
 NTFY_URL = f"https://ntfy.sh/{TOPIC}"
 
+from config import DATA_DIR, EMAIL_SENDER, EMAIL_PASSWORD
+from market_reader import analyze_market
+from options_scanner import generate_options_report
+
 # --- EMAIL CONFIGURATION ---
 SMTP_SERVER = "mail.vlad.yt"
 SMTP_PORT = 587 
-SENDER_EMAIL = required_env("EMAIL_SENDER")
-SENDER_PASSWORD = required_env("EMAIL_PASSWORD")
 RECIPIENT_EMAIL = "contactvlad1k@gmail.com"
 
 # --- ABSOLUTE PATHS ---
 PYTHON_BIN = "/usr/local/Caskroom/miniconda/base/bin/python3"
 MARKET_SCRIPT = "/Users/vladhq/Desktop/Python2026/market_reader.py"
 OPTIONS_SCRIPT = "/Users/vladhq/Desktop/Python2026/options_scanner.py"
-DATA_DIR = "/Users/vladhq/Desktop/CME_Data"
 
 # ==========================================
 # 1. MACRO CALENDAR ENGINE (7-DAY VIEW)
@@ -52,8 +54,7 @@ def get_upcoming_macro():
     for url in urls:
         try:
             # We use a longer timeout to handle weekend server lag
-            resp = requests.get(url, headers=headers, timeout=15)
-            if resp.status_code != 200: continue
+            resp = api_client.get(url, headers=headers, timeout=15)
             
             root = ET.fromstring(resp.content)
             for event in root.findall('event'):
@@ -97,6 +98,59 @@ def get_upcoming_macro():
     return "\n".join(text_output)
 
 # ==========================================
+# 1b. SLV INSTITUTIONAL FLOW ENGINE
+# ==========================================
+def get_slv_institutional_data():
+    """Reads the latest SLV dark pool + GEX data from the institutional scanner ledger."""
+    ledger_path = os.path.join(DATA_DIR, "equities_darkpool_gex_ledger.csv")
+    
+    if not os.path.exists(ledger_path):
+        return "\n🦅 SLV INSTITUTIONAL FLOW: Ledger not found. Run institutional_scanner.py first.\n"
+    
+    try:
+        with open(ledger_path, 'r') as f:
+            reader = csv.DictReader(f)
+            all_rows = [r for r in reader if r.get('Ticker', '').upper() == 'SLV']
+        
+        if not all_rows:
+            return "\n🦅 SLV INSTITUTIONAL FLOW: No SLV data in ledger yet.\n"
+        
+        # Get latest entry
+        latest = all_rows[-1]
+        
+        text = ["\n🦅 SLV INSTITUTIONAL DARK POOL FLOW"]
+        text.append("=" * 45)
+        text.append(f"  Scan Date:       {latest.get('Date', 'N/A')}")
+        text.append(f"  Spot Price:      ${latest.get('Spot_Price', 'N/A')}")
+        text.append(f"  DP Sentiment:    {latest.get('DP_Sentiment', 'N/A')}")
+        text.append(f"  DP VWAP:         ${latest.get('DP_VWAP', 'N/A')}")
+        text.append(f"  Block Volume:    {latest.get('DP_Total_Vol', 'N/A')}")
+        text.append(f"  Notional (USD):  ${latest.get('DP_Notional_USD', 'N/A')}")
+        text.append(f"  Largest Block:   {latest.get('DP_Largest_Block', 'N/A')}")
+        text.append(f"  Bull Volume:     {latest.get('DP_Bull_Vol', 'N/A')}")
+        text.append(f"  Bear Volume:     {latest.get('DP_Bear_Vol', 'N/A')}")
+        text.append("-" * 45)
+        text.append(f"  GEX Call Wall:   ${latest.get('GEX_Call_Wall', 'N/A')}")
+        text.append(f"  GEX Put Wall:    ${latest.get('GEX_Put_Wall', 'N/A')}")
+        text.append(f"  GEX Zero Gamma:  ${latest.get('GEX_Zero_Gamma', 'N/A')}")
+        
+        # Historical trend (last 5 entries)
+        if len(all_rows) >= 2:
+            text.append("\n  📊 RECENT SENTIMENT TREND:")
+            recent = all_rows[-5:] if len(all_rows) >= 5 else all_rows
+            for row in recent:
+                date = row.get('Date', '?')[:10]
+                sent = row.get('DP_Sentiment', '?')
+                vwap = row.get('DP_VWAP', '?')
+                text.append(f"    {date} → {sent} (VWAP: ${vwap})")
+        
+        text.append("=" * 45)
+        return "\n".join(text)
+    
+    except Exception as e:
+        return f"\n🦅 SLV INSTITUTIONAL FLOW: Error reading ledger: {e}\n"
+
+# ==========================================
 # 2. MASTER GENERATOR
 # ==========================================
 def generate_and_send():
@@ -112,14 +166,18 @@ def generate_and_send():
     macro_out_text = get_upcoming_macro()
 
     print("Synthesizing market and options data...")
+    
+    print("Reading SLV institutional dark pool data...")
+    slv_institutional_text = get_slv_institutional_data()
+    
     try:
         # Run market_reader.py (It reads tactical_ruling.txt internally)
-        market_out = subprocess.check_output([PYTHON_BIN, MARKET_SCRIPT], text=True)
+        market_out = analyze_market()
         
         # Run options_scanner.py
-        options_out = subprocess.check_output([PYTHON_BIN, OPTIONS_SCRIPT], text=True)
+        options_out = generate_options_report()
         
-        full_report = f"{macro_out_text}\n\n{market_out}\n\n{options_out}"
+        full_report = f"{macro_out_text}\n\n{slv_institutional_text}\n\n{market_out}\n\n{options_out}"
         
         print("\n" + "="*50)
         print("        FINAL ASSEMBLED REPORT OUTPUT")
@@ -127,7 +185,7 @@ def generate_and_send():
         print(full_report)
         print("\n" + "="*50 + "\n")
         
-    except subprocess.CalledProcessError as e:
+    except Exception as e:
         print(f"Error running scripts: {e}")
         full_report = f"Script execution failed.\nError details: {e}\n\nPartial Macro Data:\n{macro_out_text}"
 
@@ -135,30 +193,49 @@ def generate_and_send():
     print("Sending NTFY iPhone notifications...")
     
     # 1. Macro Calendar Push
-    requests.post(NTFY_URL, data=macro_out_text, headers={
-        "Title": f"7-Day Macro Outlook {today_str}", 
-        "Priority": "high", 
-        "Tags": "calendar"
-    })
+    try:
+        api_client.post(NTFY_URL, data=macro_out_text.encode('utf-8'), headers={
+            "Title": f"7-Day Macro Outlook {today_str}", 
+            "Priority": "high", 
+            "Tags": "calendar"
+        })
+    except Exception as e:
+        print(f"Failed to send NTFY notification: {e}")
 
     # 2. Market Brief Push
-    requests.post(NTFY_URL, data=market_out, headers={
-        "Title": f"Daily Market Report {today_str}", 
-        "Priority": "urgent", 
-        "Tags": "rotating_light"
-    })
+    try:
+        api_client.post(NTFY_URL, data=market_out.encode('utf-8'), headers={
+            "Title": f"Daily Market Report {today_str}", 
+            "Priority": "urgent", 
+            "Tags": "rotating_light"
+        })
+    except Exception as e:
+        pass
 
     # 3. Options Flow Push
-    requests.post(NTFY_URL, data=options_out, headers={
-        "Title": f"Options Brief {today_str}", 
-        "Priority": "urgent", 
-        "Tags": "triangular_flag_on_post"
-    })
+    try:
+        api_client.post(NTFY_URL, data=options_out.encode('utf-8'), headers={
+            "Title": f"Options Brief {today_str}", 
+            "Priority": "urgent", 
+            "Tags": "triangular_flag_on_post"
+        })
+    except Exception as e:
+        pass
+
+    # 4. SLV Dark Pool Push
+    try:
+        api_client.post(NTFY_URL, data=slv_institutional_text.encode('utf-8'), headers={
+            "Title": f"SLV Institutional Flow {today_str}", 
+            "Priority": "high", 
+            "Tags": "eagle"
+        })
+    except Exception as e:
+        pass
 
     # --- BUILD THE EMAIL ---
     msg = EmailMessage()
     msg['Subject'] = f"📈 Daily Market Report & Options Brief | {today_str}"
-    msg['From'] = SENDER_EMAIL
+    msg['From'] = EMAIL_SENDER
     msg['To'] = RECIPIENT_EMAIL
     msg.set_content(full_report)
 
@@ -232,7 +309,7 @@ def generate_and_send():
         server.ehlo()
         server.starttls()
         server.ehlo()
-        server.login(SENDER_EMAIL, SENDER_PASSWORD)
+        server.login(EMAIL_SENDER, EMAIL_PASSWORD)
         server.send_message(msg)
         server.quit()
         print(f"✅ Full report with 7-day calendar and charts routed to {RECIPIENT_EMAIL}!")

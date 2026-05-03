@@ -13,8 +13,7 @@ import akshare as ak
 import requests
 
 # --- CONFIGURATION ---
-GOLD_API_KEY = required_env("GOLD_API_KEY")
-DATA_DIR = os.path.join(os.path.expanduser("~"), "Desktop", "CME_Data")
+from config import DATA_DIR, GOLD_API_KEY
 
 if len(sys.argv) > 1:
     DAILY_DIR = sys.argv[1]
@@ -105,7 +104,7 @@ def fetch_market_prices():
 
     return data
 
-def create_charts(df, suffix, title_suffix):
+def create_charts(df, suffix, title_suffix, inv_df=None):
     sns.set_theme(style="darkgrid")
     plt.rcParams['figure.figsize'] = (14, 7)
 
@@ -189,9 +188,7 @@ def create_charts(df, suffix, title_suffix):
 
     # --- CHART 6: COMEX Inventory (30d Line Version) ---
     if suffix == "30d":
-        inv_file = os.path.join(DATA_DIR, "comex_inventory_history.csv")
-        if os.path.exists(inv_file):
-            inv_df = pd.read_csv(inv_file)
+        if inv_df is not None and not inv_df.empty:
             inv_df['Date'] = pd.to_datetime(inv_df['Date'])
             fig, ax1 = plt.subplots()
             ax1.set_title(f'COMEX Inventory Trend (30 Days)\nRegistered vs Eligible Silver Holdings', fontsize=16, fontweight='bold')
@@ -205,21 +202,19 @@ def create_charts(df, suffix, title_suffix):
             plt.savefig(os.path.join(DAILY_DIR, f'chart6_comex_inventory_{suffix}.png'))
             plt.close()
 
-def generate_dashboard_charts():
-    if not os.path.exists(INPUT_FILE): return
-    df = pd.read_csv(INPUT_FILE)
+def generate_dashboard_charts(df, inventory_df, tactical_text=""):
+    if df is None or df.empty: return
     df['Date'] = pd.to_datetime(df['Date'])
     df = df.sort_values('Date')
     
-    create_charts(df, "30d", "(30-Day Trend)")
+    create_charts(df, "30d", "(30-Day Trend)", inventory_df)
     unique_dates = df['Date'].unique()
-    create_charts(df[df['Date'].isin(unique_dates[-7:])].copy(), "7d", "(7-Day Momentum)")
+    create_charts(df[df['Date'].isin(unique_dates[-7:])].copy(), "7d", "(7-Day Momentum)", inventory_df)
 
     prices = fetch_market_prices()
     html_template = "volume_dashboard.html"
-    inv_file = os.path.join(DATA_DIR, "comex_inventory_history.csv")
     
-    if os.path.exists(html_template) and os.path.exists(inv_file):
+    if os.path.exists(html_template) and inventory_df is not None and not inventory_df.empty:
         with open(html_template, 'r') as f: html = f.read()
 
         def get_format(val, pfx=""):
@@ -255,7 +250,7 @@ def generate_dashboard_charts():
         shfe_pct = (prices['SHFE']['change'] / prices['SHFE']['price'] * 100) if prices['SHFE']['price'] else 0.0
         html = html.replace("{{SHFE_PCT}}", f"{shfe_pct:+.2f}%")
 
-        inv = pd.read_csv(inv_file).iloc[-1]
+        inv = inventory_df.iloc[-1]
         html = html.replace("{{REG_OZ}}", f"{inv['Registered']/1e6:.1f}M oz")
         html = html.replace("{{ELIG_OZ}}", f"{inv['Eligible']/1e6:.1f}M oz")
         cv = inv['Total_Change']
@@ -265,25 +260,17 @@ def generate_dashboard_charts():
         html = html.replace("{{LAST_UPDATED}}", datetime.now().strftime("%I:%M %p"))
 
         # --- Inject Tactical Ruling Section ---
-        import subprocess
-        try:
-            result = subprocess.run([
-                'python', os.path.join(os.path.dirname(__file__), 'tactical_ruling.py')
-            ], capture_output=True, text=True, check=True)
-            tactical_text = result.stdout.strip()
-            if tactical_text:
-                # Format as a dashboard card
-                tactical_html = f'''
+        if tactical_text:
+            # Format as a dashboard card
+            tactical_html = f'''
 <div class="card" style="border-top: 3px solid var(--accent-blue); margin-top: 30px;">
   <h2 style="color: var(--accent-blue);">Tactical Ruling: Macro Debrief</h2>
   <pre style="font-family: 'Fira Mono', 'Consolas', 'Menlo', monospace; background: #181c20; color: #c5c6c7; padding: 18px; border-radius: 8px; font-size: 1.08rem; white-space: pre-wrap; margin: 0;">{tactical_text}</pre>
 </div>
 '''
-                # Insert before </div> of grid-container (end of dashboard)
-                html = html.replace('</div>\n</body>', tactical_html + '\n</div>\n</body>')
-                print("✅ Tactical Ruling section injected into HTML dashboard.")
-        except Exception as e:
-            print(f"⚠️ Could not inject Tactical Ruling into HTML: {e}")
+            # Insert before </div> of grid-container (end of dashboard)
+            html = html.replace('</div>\n</body>', tactical_html + '\n</div>\n</body>')
+            print("✅ Tactical Ruling section injected into HTML dashboard.")
 
         with open(os.path.join(DAILY_DIR, "volume_dashboard.html"), 'w') as f: f.write(html)
         print("✅ Dashboard Ready.")

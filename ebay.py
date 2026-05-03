@@ -3,19 +3,20 @@ from config import required_env
 import csv
 import json
 import base64
-import requests
+from core.api_client import api_client
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 from datetime import datetime, timedelta
 import time
 
+# --- CONFIGURATION ---
+from config import DATA_DIR, EBAY_APP_ID, EBAY_CERT_ID
+
 # --- EBAY API CREDENTIALS ---
-APP_ID = required_env("EBAY_APP_ID")
-CERT_ID = required_env("EBAY_CERT_ID")
+APP_ID = EBAY_APP_ID
+CERT_ID = EBAY_CERT_ID
 
 # --- 1. DYNAMIC SPOT PRICE INGESTION (TEXT PARSER) ---
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, '..', 'CME_Data')
 
 def find_latest_files(lookback_days=5):
     today = datetime.now()
@@ -73,11 +74,11 @@ def get_ebay_token():
         "scope": "https://api.ebay.com/oauth/api_scope"
     }
 
-    resp = requests.post(token_url, headers=headers, data=data)
-    if resp.status_code == 200:
+    try:
+        resp = api_client.post(token_url, headers=headers, data=data)
         return resp.json().get("access_token")
-    else:
-        print(f"Failed to get token: {resp.text}")
+    except Exception as e:
+        print(f"Failed to get token: {e}")
         return None
 
 def get_ebay_arbitrage_data_api(item_id, token):
@@ -90,64 +91,55 @@ def get_ebay_arbitrage_data_api(item_id, token):
     }
     
     try:
-        resp = requests.get(url, headers=headers)
+        resp = api_client.get(url, headers=headers)
+        data = resp.json()
+        name = data.get("title", f"Silver Eagle (ID: {item_id})")
         
-        if resp.status_code == 200:
-            data = resp.json()
-            name = data.get("title", f"Silver Eagle (ID: {item_id})")
+        price_data = data.get("price", {})
+        base_price = float(price_data.get("value", 0.0))
+        
+        shipping_cost = 0.0
+        shipping_options = data.get("shippingOptions", [])
+        if shipping_options:
+            ship_data = shipping_options[0].get("shippingCost", {})
+            shipping_cost = float(ship_data.get("value", 0.0))
             
-            price_data = data.get("price", {})
-            base_price = float(price_data.get("value", 0.0))
+        status = "Unknown"
+        available_qty = "0"
+        sold_qty = "0"
+        
+        availabilities = data.get("estimatedAvailabilities", [])
+        if availabilities:
+            avail_node = availabilities[0]
+            status = avail_node.get("estimatedAvailabilityStatus", "Unknown")
             
-            shipping_cost = 0.0
-            shipping_options = data.get("shippingOptions", [])
-            if shipping_options:
-                ship_data = shipping_options[0].get("shippingCost", {})
-                shipping_cost = float(ship_data.get("value", 0.0))
+            if "availabilityThreshold" in avail_node:
+                available_qty = f"{avail_node['availabilityThreshold']}+"
+            else:
+                available_qty = str(avail_node.get("estimatedAvailableQuantity", 0))
                 
-            status = "Unknown"
-            available_qty = "0"
-            sold_qty = "0"
-            
-            # --- INVENTORY TRACKING LOGIC ---
-            availabilities = data.get("estimatedAvailabilities", [])
-            if availabilities:
-                avail_node = availabilities[0]
-                status = avail_node.get("estimatedAvailabilityStatus", "Unknown")
-                
-                # If the seller hid the exact count behind a threshold (e.g. "10+")
-                if "availabilityThreshold" in avail_node:
-                    available_qty = f"{avail_node['availabilityThreshold']}+"
-                else:
-                    available_qty = str(avail_node.get("estimatedAvailableQuantity", 0))
-                    
-                # We can also grab how many they have already sold!
-                sold_qty = str(avail_node.get("estimatedSoldQuantity", 0))
-            
-            return {
-                "item_id": item_id,
-                "name": name,
-                "base_price": base_price,
-                "shipping": shipping_cost,
-                "total_cost": base_price + shipping_cost,
-                "status": status,
-                "available_qty": available_qty, # <--- Added
-                "sold_qty": sold_qty            # <--- Added
-            }
-        elif resp.status_code == 404:
-            return {"error": f"Item {item_id} not found or listing removed."}
-        else:
-            return {"error": f"API Error {resp.status_code}: {resp.text}"}
-            
+            sold_qty = str(avail_node.get("estimatedSoldQuantity", 0))
+        
+        return {
+            "item_id": item_id,
+            "name": name,
+            "base_price": base_price,
+            "shipping": shipping_cost,
+            "total_cost": base_price + shipping_cost,
+            "status": status,
+            "available_qty": available_qty,
+            "sold_qty": sold_qty
+        }
     except Exception as e:
+        if "404" in str(e):
+            return {"error": f"Item {item_id} not found or listing removed."}
         return {"error": str(e)}
 
 def log_arbitrage_ledger(cheapest_cost, avg_cost, comex_spot, item_count):
     """Appends the latest physical arbitrage metrics to a dedicated CSV ledger."""
-    data_dir = os.path.join(os.path.expanduser("~"), "Desktop", "CME_Data")
-    os.makedirs(data_dir, exist_ok=True)
+    os.makedirs(DATA_DIR, exist_ok=True)
     
-    file_path = os.path.join(data_dir, "physical_arbitrage_ledger.csv")
+    file_path = os.path.join(DATA_DIR, "physical_arbitrage_ledger.csv")
     file_exists = os.path.isfile(file_path)
 
     headers = [

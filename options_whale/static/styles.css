@@ -278,3 +278,58 @@ body.resizing-active #v-resizer {
     border-color: #ffffff;
     box-shadow: 0 0 8px rgba(255, 255, 255, 0.2);
 }
+
+/* SLV Flow Toggle States */
+.slv-toggle.active {
+    background-color: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border-color: #34d399;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
+}
+
+/* --- MOBILE SPECIFIC STYLES --- */
+@media (max-width: 768px) {
+    .fullscreen-mode {
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        height: 100vh !important;
+        height: 100dvh !important;
+        width: 100vw !important;
+    }
+    
+    .war-slider::-webkit-slider-thumb {
+        width: 20px;
+        height: 20px;
+    }
+    .war-slider::-moz-range-thumb {
+        width: 20px;
+        height: 20px;
+    }
+    
+    /* Improve touch scroll on panels */
+    .draggable-panel {
+        touch-action: pan-y;
+    }
+    
+    /* Prevent horizontal overflow on mobile */
+    body, main {
+        overflow-x: hidden;
+    }
+    
+    /* Fix tooltips for mobile (tap instead of hover) */
+    .group-hover\:block {
+        display: none !important;
+    }
+    .group:active .group-hover\:block,
+    .group:focus .group-hover\:block,
+    .group:focus-within .group-hover\:block {
+        display: block !important;
+    }
+
+    /* Mobile Tab System */
+    .mobile-tab-hidden {
+        display: none !important;
+    }
+}

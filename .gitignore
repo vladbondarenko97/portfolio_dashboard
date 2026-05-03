@@ -4,6 +4,12 @@
 *.pyc
 state.json
 
+# macOS system files
+.DS_Store
+
+# Local backups (Git is your backup now!)
+Backup/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -87,4 +93,3 @@ target/
 # IPython
 profile_default/
 ipython_config.py
-
