@@ -161,3 +161,107 @@ class QuantEngine:
             'velocity': float(velocity),
             'short_gamma_active': distance < 0
         }
+
+    def calculate_option_analytics(self, spot, strike, days, r, vol, option_type, market_price=None):
+        """
+        Full institutional-grade option analytics for a single contract.
+        Returns all Greeks, probabilities, and trade metrics.
+        """
+        is_call = option_type.lower() == 'call'
+        T = max(days / 365.0, 1e-6)
+        vol = max(vol, 1e-6)
+
+        # === Core BS ===
+        d1 = (np.log(spot / strike) + (r + 0.5 * vol**2) * T) / (vol * np.sqrt(T))
+        d2 = d1 - vol * np.sqrt(T)
+
+        # === Probabilities ===
+        if is_call:
+            prob_itm = float(norm.cdf(d2))           # Risk-neutral prob of expiring ITM
+            prob_otm = float(1 - prob_itm)
+            bs_price = spot * norm.cdf(d1) - strike * np.exp(-r * T) * norm.cdf(d2)
+        else:
+            prob_itm = float(norm.cdf(-d2))
+            prob_otm = float(1 - prob_itm)
+            bs_price = strike * np.exp(-r * T) * norm.cdf(-d2) - spot * norm.cdf(-d1)
+        bs_price = max(bs_price, 0.0)
+
+        # === Delta ===
+        delta = float(norm.cdf(d1) if is_call else norm.cdf(d1) - 1.0)
+
+        # === Gamma ===
+        gamma = float(norm.pdf(d1) / (spot * vol * np.sqrt(T)))
+
+        # === Theta (per day) ===
+        theta_raw = (
+            -(spot * norm.pdf(d1) * vol) / (2 * np.sqrt(T))
+            - r * strike * np.exp(-r * T) * (norm.cdf(d2) if is_call else norm.cdf(-d2))
+        )
+        if not is_call:
+            theta_raw = theta_raw + r * strike * np.exp(-r * T)
+        theta = float(theta_raw / 365.0)  # per calendar day
+
+        # === Vega (per 1% vol move) ===
+        vega = float(spot * norm.pdf(d1) * np.sqrt(T) / 100.0)
+
+        # === Rho (per 1% rate move) ===
+        if is_call:
+            rho = float(strike * T * np.exp(-r * T) * norm.cdf(d2) / 100.0)
+        else:
+            rho = float(-strike * T * np.exp(-r * T) * norm.cdf(-d2) / 100.0)
+
+        # === Intrinsic / Extrinsic ===
+        if is_call:
+            intrinsic = float(max(spot - strike, 0.0))
+        else:
+            intrinsic = float(max(strike - spot, 0.0))
+        extrinsic = float(max(bs_price - intrinsic, 0.0))
+
+        # === Breakeven ===
+        price_to_use = market_price if market_price and market_price > 0 else bs_price
+        if is_call:
+            breakeven = float(strike + price_to_use)
+        else:
+            breakeven = float(strike - price_to_use)
+
+        # === IV vs HV Signal ===
+        hv = self.calculate_realized_volatility()
+        iv_hv_diff = vol - hv
+        if iv_hv_diff > 0.05:
+            iv_signal = "OVERPRICED — SELL"
+        elif iv_hv_diff < -0.05:
+            iv_signal = "UNDERPRICED — BUY"
+        else:
+            iv_signal = "FAIRLY PRICED"
+
+        # === Moneyness ===
+        moneyness_pct = (spot - strike) / strike * 100
+        if abs(moneyness_pct) < 0.5:
+            moneyness = "ATM"
+        elif (is_call and moneyness_pct > 0) or (not is_call and moneyness_pct < 0):
+            moneyness = f"ITM ({abs(moneyness_pct):.1f}%)"
+        else:
+            moneyness = f"OTM ({abs(moneyness_pct):.1f}%)"
+
+        # === Expected Move at expiry ===
+        expected_move = float(spot * vol * np.sqrt(T))
+
+        return {
+            "bs_price": round(bs_price, 4),
+            "market_price": round(price_to_use, 4),
+            "prob_itm": round(prob_itm * 100, 2),
+            "prob_otm": round(prob_otm * 100, 2),
+            "delta": round(delta, 4),
+            "gamma": round(gamma, 6),
+            "theta": round(theta, 4),
+            "vega": round(vega, 4),
+            "rho": round(rho, 4),
+            "intrinsic": round(intrinsic, 4),
+            "extrinsic": round(extrinsic, 4),
+            "breakeven": round(breakeven, 4),
+            "moneyness": moneyness,
+            "expected_move": round(expected_move, 2),
+            "iv_pct": round(vol * 100, 2),
+            "hv_pct": round(hv * 100, 2),
+            "iv_signal": iv_signal,
+        }

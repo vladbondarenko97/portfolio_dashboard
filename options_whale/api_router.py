@@ -2008,6 +2008,131 @@ def get_macro_direction():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
+
+# ==========================================
+# OPTION EXPLORER & ANALYTICS API
+# ==========================================
+
+@app.route('/api/option_chain', methods=['GET'])
+def get_option_chain():
+    """Returns all expirations and strikes for a ticker."""
+    ticker_symbol = request.args.get('ticker', 'SPY').upper()
+    expiration = request.args.get('expiration', None)
+    try:
+        tk = yf.Ticker(ticker_symbol)
+        spot_info = tk.history(period='1d')
+        if spot_info.empty:
+            return jsonify({"status": "error", "message": "Could not fetch spot price."})
+        spot = float(spot_info['Close'].iloc[-1])
+
+        expirations = list(tk.options)
+        if not expirations:
+            return jsonify({"status": "error", "message": "No options found for this ticker."})
+
+        if expiration and expiration in expirations:
+            selected_exp = expiration
+        else:
+            # Default: first non-0DTE
+            selected_exp = expirations[0]
+            for e in expirations:
+                if (datetime.strptime(e, '%Y-%m-%d') - datetime.now()).days > 0:
+                    selected_exp = e
+                    break
+
+        chain = tk.option_chain(selected_exp)
+        days_to_exp = max(1, (datetime.strptime(selected_exp, '%Y-%m-%d') - datetime.now()).days)
+
+        def format_contracts(df, option_type):
+            rows = []
+            for _, row in df.iterrows():
+                iv = row.get('impliedVolatility', 0)
+                last = row.get('lastPrice', 0)
+                bid = row.get('bid', 0)
+                ask = row.get('ask', 0)
+                oi = row.get('openInterest', 0)
+                volume = row.get('volume', 0)
+                rows.append({
+                    'strike': float(row['strike']),
+                    'type': option_type,
+                    'last': float(last) if pd.notna(last) else 0,
+                    'bid': float(bid) if pd.notna(bid) else 0,
+                    'ask': float(ask) if pd.notna(ask) else 0,
+                    'iv': float(iv) if pd.notna(iv) else 0,
+                    'oi': int(oi) if pd.notna(oi) else 0,
+                    'volume': int(volume) if pd.notna(volume) else 0,
+                })
+            return rows
+
+        calls = format_contracts(chain.calls, 'call')
+        puts = format_contracts(chain.puts, 'put')
+
+        return jsonify({
+            "status": "success",
+            "data": {
+                "ticker": ticker_symbol,
+                "spot": spot,
+                "expirations": expirations[:24],  # limit to next ~2 years
+                "selected_expiration": selected_exp,
+                "days_to_exp": days_to_exp,
+                "calls": calls,
+                "puts": puts,
+            }
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+
+@app.route('/api/option_calc', methods=['GET'])
+def calculate_option():
+    """Runs full Black-Scholes analytics on a specific contract."""
+    try:
+        ticker_symbol = request.args.get('ticker', 'SPY').upper()
+        strike = float(request.args.get('strike', 0))
+        expiration = request.args.get('expiration', '')
+        option_type = request.args.get('type', 'call').lower()
+        market_price = float(request.args.get('market_price', 0))
+
+        tk = yf.Ticker(ticker_symbol)
+        spot_info = tk.history(period='1d')
+        if spot_info.empty:
+            return jsonify({"status": "error", "message": "Could not fetch spot price."})
+        spot = float(spot_info['Close'].iloc[-1])
+
+        days = max(1, (datetime.strptime(expiration, '%Y-%m-%d') - datetime.now()).days)
+        r = quant.get_risk_free_rate()
+
+        # Pull IV from the live chain for accuracy
+        iv = 0.20
+        try:
+            chain = tk.option_chain(expiration)
+            df = chain.calls if option_type == 'call' else chain.puts
+            match = df[df['strike'] == strike]
+            if not match.empty:
+                iv_raw = match.iloc[0]['impliedVolatility']
+                if pd.notna(iv_raw) and iv_raw > 0:
+                    iv = float(iv_raw)
+                mp = match.iloc[0]['lastPrice']
+                if market_price == 0 and pd.notna(mp):
+                    market_price = float(mp)
+        except Exception:
+            pass
+
+        analytics = quant.calculate_option_analytics(
+            spot=spot, strike=strike, days=days,
+            r=r, vol=iv, option_type=option_type,
+            market_price=market_price
+        )
+        analytics['spot'] = round(spot, 2)
+        analytics['strike'] = strike
+        analytics['expiration'] = expiration
+        analytics['days_to_exp'] = days
+        analytics['option_type'] = option_type.upper()
+
+        return jsonify({"status": "success", "data": analytics})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+
 if __name__ == "__main__":
     # Bound to Port 8080 as requested
     app.run(host='0.0.0.0', port=8080)

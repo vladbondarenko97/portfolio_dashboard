@@ -3083,6 +3083,143 @@ function updateIvHvSpread(spreadData) {
 }
 
 // ==========================================
+// --- LIVE OPTION EXPLORER ---
+// ==========================================
+
+let _explorerType = 'call';
+let _explorerChainData = null;
+let _explorerCurrentTicker = '';
+let _explorerCurrentExp = '';
+
+function setExplorerType(type) {
+    _explorerType = type;
+    document.getElementById('explorerCallBtn').className =
+        `px-3 py-1 text-[10px] font-bold border border-zinc-700 rounded-l transition-all ${type === 'call' ? 'bg-indigo-600 text-white' : 'bg-zinc-900 text-zinc-500'}`;
+    document.getElementById('explorerPutBtn').className =
+        `px-3 py-1 text-[10px] font-bold border border-zinc-700 rounded-r transition-all ${type === 'put' ? 'bg-rose-600 text-white' : 'bg-zinc-900 text-zinc-500'}`;
+    renderChainTable();
+}
+
+async function loadOptionChain(expChangeOnly = false) {
+    const ticker = document.getElementById('explorerTicker').value.trim().toUpperCase();
+    if (!ticker) return;
+    const expiry = document.getElementById('explorerExpiry').value;
+    const chainBody = document.getElementById('explorerChainBody');
+    chainBody.innerHTML = `<div class="p-8 text-center text-zinc-600 text-[10px] uppercase tracking-widest animate-pulse">Fetching ${ticker} chain...</div>`;
+
+    try {
+        let url = `${API_BASE}/api/option_chain?ticker=${ticker}`;
+        if (expiry) url += `&expiration=${expiry}`;
+        const res = await fetch(url);
+        const result = await res.json();
+        if (result.status !== 'success') {
+            chainBody.innerHTML = `<div class="p-8 text-center text-red-500 text-[10px]">${result.message}</div>`;
+            return;
+        }
+        const data = result.data;
+        _explorerChainData = data;
+        _explorerCurrentTicker = data.ticker;
+        _explorerCurrentExp = data.selected_expiration;
+
+        // Populate spot
+        document.getElementById('explorerSpotPrice').innerText = `$${data.spot.toFixed(2)}`;
+
+        // Populate expiry dropdown (only if fresh ticker load)
+        if (!expChangeOnly || document.getElementById('explorerExpiry').options.length <= 1) {
+            const sel = document.getElementById('explorerExpiry');
+            sel.innerHTML = data.expirations.map(e =>
+                `<option value="${e}" ${e === data.selected_expiration ? 'selected' : ''}>${e}</option>`
+            ).join('');
+        }
+
+        renderChainTable();
+    } catch (e) {
+        chainBody.innerHTML = `<div class="p-8 text-center text-red-500 text-[10px]">Error: ${e.message}</div>`;
+    }
+}
+
+function renderChainTable() {
+    const chainBody = document.getElementById('explorerChainBody');
+    if (!_explorerChainData) return;
+    const contracts = _explorerType === 'call' ? _explorerChainData.calls : _explorerChainData.puts;
+    const spot = _explorerChainData.spot;
+
+    if (!contracts || contracts.length === 0) {
+        chainBody.innerHTML = '<div class="p-8 text-center text-zinc-700 text-[10px]">No contracts found.</div>';
+        return;
+    }
+
+    chainBody.innerHTML = contracts.map(c => {
+        const isATM = Math.abs(c.strike - spot) / spot < 0.01;
+        const isITM = (_explorerType === 'call') ? c.strike < spot : c.strike > spot;
+        const rowBg = isATM ? 'bg-indigo-900/20' : isITM ? 'bg-zinc-900/40' : '';
+        const strikeColor = isATM ? 'text-indigo-300 font-bold' : isITM ? 'text-white' : 'text-zinc-400';
+        const ivColor = c.iv > 0.5 ? 'text-red-400' : c.iv > 0.3 ? 'text-amber-400' : 'text-green-400';
+        return `<div onclick="selectContract(${c.strike}, '${_explorerCurrentExp}', '${_explorerType}', ${c.last})"
+            class="grid grid-cols-6 text-[10px] px-3 py-1.5 border-b border-zinc-900/50 hover:bg-indigo-900/20 cursor-pointer transition-colors ${rowBg}">
+            <div class="${strikeColor}">${c.strike}${isATM ? ' ◀' : ''}</div>
+            <div class="text-right text-zinc-300 font-mono">${c.last.toFixed(2)}</div>
+            <div class="text-right text-zinc-500 font-mono">${c.bid.toFixed(2)}</div>
+            <div class="text-right text-zinc-500 font-mono">${c.ask.toFixed(2)}</div>
+            <div class="text-right ${ivColor} font-mono">${(c.iv * 100).toFixed(1)}%</div>
+            <div class="text-right text-zinc-600 font-mono">${c.oi.toLocaleString()}</div>
+        </div>`;
+    }).join('');
+}
+
+async function selectContract(strike, expiration, type, marketPrice) {
+    const ticker = _explorerCurrentTicker;
+    document.getElementById('explorerMetricsEmpty').classList.add('hidden');
+    document.getElementById('explorerMetrics').classList.remove('hidden');
+    document.getElementById('explorerMetrics').classList.add('flex');
+    document.getElementById('explorerContractLabel').innerText = `${ticker} $${strike} ${type.toUpperCase()} exp ${expiration}`;
+    document.getElementById('exProbITM').innerText = '...';
+
+    try {
+        const url = `${API_BASE}/api/option_calc?ticker=${ticker}&strike=${strike}&expiration=${expiration}&type=${type}&market_price=${marketPrice}`;
+        const res = await fetch(url);
+        const result = await res.json();
+        if (result.status !== 'success') {
+            document.getElementById('exIVSignal').innerText = result.message;
+            return;
+        }
+        const d = result.data;
+        document.getElementById('explorerContractLabel').innerText = `${d.option_type} ${ticker} $${strike} | Exp ${expiration} | Spot $${d.spot}`;
+        document.getElementById('exMoneyness').innerText = d.moneyness;
+        document.getElementById('exDays').innerText = `${d.days_to_exp} days`;
+        document.getElementById('exMarketPx').innerText = `$${d.market_price.toFixed(2)}`;
+        document.getElementById('exBSPx').innerText = `$${d.bs_price.toFixed(2)}`;
+        document.getElementById('exProbITM').innerText = `${d.prob_itm.toFixed(1)}%`;
+        document.getElementById('exProbOTM').innerText = `${d.prob_otm.toFixed(1)}%`;
+        document.getElementById('exDelta').innerText = d.delta.toFixed(4);
+        document.getElementById('exGamma').innerText = d.gamma.toFixed(6);
+        document.getElementById('exTheta').innerText = `$${d.theta.toFixed(4)}`;
+        document.getElementById('exVega').innerText = `$${d.vega.toFixed(4)}`;
+        document.getElementById('exRho').innerText = `$${d.rho.toFixed(4)}`;
+        document.getElementById('exBreakeven').innerText = `$${d.breakeven.toFixed(2)}`;
+        document.getElementById('exExpMove').innerText = `±$${d.expected_move.toFixed(2)}`;
+        document.getElementById('exIntrinsic').innerText = `$${d.intrinsic.toFixed(4)}`;
+        document.getElementById('exExtrinsic').innerText = `$${d.extrinsic.toFixed(4)}`;
+        document.getElementById('exIV').innerText = `${d.iv_pct.toFixed(2)}%`;
+        document.getElementById('exHV').innerText = `${d.hv_pct.toFixed(2)}%`;
+
+        const sig = document.getElementById('exIVSignal');
+        if (d.iv_signal.includes('OVER')) {
+            sig.innerText = `⚠️ ${d.iv_signal} — IV ${d.iv_pct.toFixed(1)}% vs HV ${d.hv_pct.toFixed(1)}%`;
+            sig.className = 'p-3 text-center font-bold text-[11px] uppercase tracking-widest bg-red-900/20 text-red-400 border-t border-red-900/40';
+        } else if (d.iv_signal.includes('UNDER')) {
+            sig.innerText = `✅ ${d.iv_signal} — IV ${d.iv_pct.toFixed(1)}% vs HV ${d.hv_pct.toFixed(1)}%`;
+            sig.className = 'p-3 text-center font-bold text-[11px] uppercase tracking-widest bg-green-900/20 text-green-400 border-t border-green-900/40';
+        } else {
+            sig.innerText = `IV ${d.iv_pct.toFixed(1)}% = FAIRLY PRICED vs HV ${d.hv_pct.toFixed(1)}%`;
+            sig.className = 'p-3 text-center font-bold text-[11px] uppercase tracking-widest bg-zinc-950 text-zinc-500 border-t border-zinc-900';
+        }
+    } catch(e) {
+        document.getElementById('exIVSignal').innerText = `Error: ${e.message}`;
+    }
+}
+
+// ==========================================
 // --- HELP MODAL INTELLIGENCE SYSTEM ---
 // ==========================================
 const panelHelp = {
@@ -3172,6 +3309,10 @@ const panelHelp = {
     "arbPanel7": {
         title: "IV / HV Spread",
         desc: "Compares current Implied Volatility against actual historical (realized) volatility. A wide positive spread means options are overpriced (ideal for selling premium), while a negative spread means options are underpriced (ideal for buying premium)."
+    },
+    "arbPanel8": {
+        title: "Live Option Explorer",
+        desc: "A full yfinance-powered option chain browser. Select any ticker, expiration date, and call/put type to browse all available contracts. Click any row to run the full Black-Scholes quant engine on that specific contract — outputting probability of expiring ITM/OTM, all 5 Greeks (Delta, Gamma, Theta, Vega, Rho), breakeven price, intrinsic vs extrinsic value, expected move at expiry, and a live IV vs HV premium signal to determine if options are over or underpriced."
     }
 };
 
