@@ -23,7 +23,8 @@ class UnifiedAPIClient:
             connect=retries,
             backoff_factor=backoff_factor,
             status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]
+            allowed_methods=["HEAD", "GET", "OPTIONS", "POST"],
+            respect_retry_after_header=False
         )
         adapter = HTTPAdapter(max_retries=retry)
         self.session.mount("http://", adapter)

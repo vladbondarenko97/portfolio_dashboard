@@ -1,0 +1,23 @@
+const DASHBOARD_PAYLOAD = {
+    "status": "success",
+    "liquidity": {
+        "bucket_A_total": 500350.0,
+        "bucket_B_total": 50350.0
+    },
+    "scanner_output": [
+        {
+            "type": "Volatility Skew",
+            "asset": "SLV",
+            "signal": "Put Credit Spread",
+            "edge": 10.73,
+            "details": "IV (59.42%) > HV (48.69%) by more than 5%."
+        },
+        {
+            "type": "Physical Arbitrage",
+            "asset": "Silver Eagles",
+            "signal": "Hard Asset Buy Signal",
+            "edge": 2.82,
+            "details": "Premium dropped to 12.18%, triggering physical buy."
+        }
+    ]
+};

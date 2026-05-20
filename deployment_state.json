@@ -1,0 +1,18 @@
+{
+    "bucket_A_base_layer": {
+        "balance": 500000,
+        "assets": [
+            "Physical Metals",
+            "Oak Ave Holdings LLC",
+            "Core Equities"
+        ]
+    },
+    "bucket_B_velocity_engine": {
+        "balance": 50000,
+        "assets": [
+            "ES Conviction Plays",
+            "Put Credit Spreads"
+        ]
+    },
+    "active_trades": []
+}

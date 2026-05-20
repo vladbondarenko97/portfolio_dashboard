@@ -89,7 +89,14 @@ def update_silver_inventory():
                 hist = new_entry
                 
             hist.to_csv(HISTORY_FILE, index=False)
-            print(f"✅ History updated in {HISTORY_FILE}")
+            
+            try:
+                from core.sqlite_layer import append_df
+                append_df('comex_inventory_history', new_entry)
+            except Exception as e:
+                print(f"⚠️ SQLite dual-write failed for update_inventory: {e}")
+                
+            print(f"✅ History updated in {HISTORY_FILE} and SQLite")
             return hist
         else:
             print("❌ Error: Could not find 'TOTAL REGISTERED' or 'TOTAL ELIGIBLE' labels.")

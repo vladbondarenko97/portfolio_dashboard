@@ -46,15 +46,15 @@ def get_last_valid_price(ticker_symbol):
 def fetch_market_prices():
     data = {
         "SLV": {"price": 0.0, "change": 0.0},
-        "SIH26": {"price": 0.0, "change": 0.0},
+        "SI_F": {"price": 0.0, "change": 0.0},
         "SPOT": {"price": 0.0, "change": 0.0},
         "SHFE": {"price": 0.0, "change": 0.0, "usd_oz": 0.0},
         "USDCNY": 7.22
     }
     # SLV ETF (Yahoo)
     data["SLV"]["price"], data["SLV"]["change"] = get_last_valid_price("SLV")
-    # COMEX March 2026 (Yahoo)
-    data["SIH26"]["price"], data["SIH26"]["change"] = get_last_valid_price("SIH26.CMX")
+    # COMEX Continuous Silver (Yahoo)
+    data["SI_F"]["price"], data["SI_F"]["change"] = get_last_valid_price("SI=F")
     # SPOT SILVER (GoldAPI.io)
     try:
         headers = {"x-access-token": GOLD_API_KEY, "Content-Type": "application/json"}
@@ -99,11 +99,11 @@ def aggregate_data_to_text(volume_df, inventory_df, tactical_text=""):
     last_updated = ET.SubElement(root, "last_updated")
     last_updated.text = datetime.now().strftime('%Y-%m-%d %I:%M %p')
 
-    if not os.path.exists(INPUT_FILE):
+    if volume_df is None or volume_df.empty:
         error = ET.SubElement(root, "error")
-        error.text = f"Input file not found: {INPUT_FILE}"
+        error.text = f"Input volume dataframe is empty or missing."
     else:
-        df = pd.read_csv(INPUT_FILE)
+        df = volume_df.copy()
         df['Date'] = pd.to_datetime(df['Date'])
         df = df.sort_values('Date')
 

@@ -56,6 +56,15 @@ def get_upcoming_macro():
             # We use a short timeout to prevent hangs when rate-limited
             resp = api_client.get(url, headers=headers, timeout=3)
             
+            # Check if we got a successful XML response (ForexFactory returns HTML on 429)
+            if resp.status_code != 200:
+                print(f"DEBUG: Macro feed returned status {resp.status_code} for {url}")
+                continue
+
+            if 'text/xml' not in resp.headers.get('Content-Type', ''):
+                print(f"DEBUG: Macro feed returned non-XML content for {url}")
+                continue
+
             root = ET.fromstring(resp.content)
             for event in root.findall('event'):
                 # 1. Filter: Country & Impact
@@ -134,10 +143,19 @@ def get_slv_institutional_data():
         text.append(f"  GEX Put Wall:    ${latest.get('GEX_Put_Wall', 'N/A')}")
         text.append(f"  GEX Zero Gamma:  ${latest.get('GEX_Zero_Gamma', 'N/A')}")
         
-        # Historical trend (last 5 entries)
+        # Historical trend (last 5 unique entries)
         if len(all_rows) >= 2:
             text.append("\n  📊 RECENT SENTIMENT TREND:")
-            recent = all_rows[-5:] if len(all_rows) >= 5 else all_rows
+            
+            # Keep only the latest entry per day
+            unique_daily = {}
+            for r in all_rows:
+                date_str = r.get('Date', '?')[:10]
+                unique_daily[date_str] = r
+                
+            recent_vals = list(unique_daily.values())
+            recent = recent_vals[-5:] if len(recent_vals) >= 5 else recent_vals
+            
             for row in recent:
                 date = row.get('Date', '?')[:10]
                 sent = row.get('DP_Sentiment', '?')
@@ -274,7 +292,9 @@ def generate_and_send():
         ("Silver Divergence", "chart3_silver_divergence_7d.png", "chart3_silver_divergence_30d.png"),
         ("SPY Options Flow", "chart4_spy_options_flow_7d.png", "chart4_spy_options_flow_30d.png"),
         ("Macro 10Y Yields", "chart5_macro_10y_yields_7d.png", "chart5_macro_10y_yields_30d.png"),
-        ("COMEX Inventory", None, "chart6_comex_inventory_30d.png") 
+        ("COMEX Inventory", None, "chart6_comex_inventory_30d.png"),
+        ("Bitcoin Ratios", "chart7_crypto_ratios_30d.png", "chart7_crypto_ratios_1y.png"),
+        ("Metals Prices", "chart8_metals_price_30d.png", "chart8_metals_price_1y.png")
     ]
 
     # HTML Body Construction
@@ -298,24 +318,31 @@ def generate_and_send():
 
     images_to_attach = []
 
-    for title, file_7d, file_30d in chart_pairs:
+    for title, file_1, file_2 in chart_pairs:
         html_body += f"<h3>{title}</h3>\n<table><tr>"
         
-        # 7-Day Chart
-        if file_7d and os.path.exists(os.path.join(daily_dir, file_7d)):
-            cid_7d = make_msgid()[1:-1] 
-            html_body += f"<td><strong>7-Day Window</strong><br><img src='cid:{cid_7d}'></td>"
-            images_to_attach.append((file_7d, cid_7d))
+        def get_label(filename):
+            if not filename: return "Chart"
+            if '7d' in filename: return "7-Day Window"
+            if '30d' in filename: return "30-Day Window"
+            if '1y' in filename: return "1-Year Window"
+            return "Chart"
+
+        # First Chart
+        if file_1 and os.path.exists(os.path.join(daily_dir, file_1)):
+            cid_1 = make_msgid()[1:-1] 
+            html_body += f"<td><strong>{get_label(file_1)}</strong><br><img src='cid:{cid_1}'></td>"
+            images_to_attach.append((file_1, cid_1))
         else:
-            html_body += "<td><em>7-Day chart not available</em></td>"
+            html_body += f"<td><em>{get_label(file_1)} not available</em></td>"
             
-        # 30-Day Chart
-        if file_30d and os.path.exists(os.path.join(daily_dir, file_30d)):
-            cid_30d = make_msgid()[1:-1]
-            html_body += f"<td><strong>30-Day Window</strong><br><img src='cid:{cid_30d}'></td>"
-            images_to_attach.append((file_30d, cid_30d))
+        # Second Chart
+        if file_2 and os.path.exists(os.path.join(daily_dir, file_2)):
+            cid_2 = make_msgid()[1:-1]
+            html_body += f"<td><strong>{get_label(file_2)}</strong><br><img src='cid:{cid_2}'></td>"
+            images_to_attach.append((file_2, cid_2))
         else:
-            html_body += "<td><em>30-Day chart not available</em></td>"
+            html_body += f"<td><em>{get_label(file_2)} not available</em></td>"
             
         html_body += "</tr></table>\n"
 

@@ -4,6 +4,7 @@ from pathlib import Path
 # Base Paths
 PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_ROOT.parent / "CME_Data"
+DB_PATH = DATA_DIR / "portfolio.db"
 DOTENV_PATH = PROJECT_ROOT / ".env"
 
 try:

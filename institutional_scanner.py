@@ -63,9 +63,17 @@ def get_dark_pool_profile(ticker):
         if blocks.empty:
             return None
 
-        bullish_vol = int(blocks[blocks['side'] == 'A']['size'].sum())
-        bearish_vol = int(blocks[blocks['side'] == 'B']['size'].sum())
+        vwap_price = float((blocks['price'] * blocks['size']).sum() / blocks['size'].sum()) if not blocks.empty else 0.0
         
+        # VWAP Tick Rule Heuristic
+        bullish_vol = int(blocks[(blocks['side'] == 'A') | ((blocks['side'].isin(['N', 'UNK'])) & (blocks['price'] >= vwap_price))]['size'].sum())
+        bearish_vol = int(blocks[(blocks['side'] == 'B') | ((blocks['side'].isin(['N', 'UNK'])) & (blocks['price'] < vwap_price))]['size'].sum())
+        
+        # Add fallback just in case 'side' format varies in pandas
+        if bullish_vol == 0 and bearish_vol == 0 and not blocks.empty:
+            bullish_vol = int(blocks[blocks['price'] >= vwap_price]['size'].sum())
+            bearish_vol = int(blocks[blocks['price'] < vwap_price]['size'].sum())
+
         sentiment = "NEUTRAL"
         if bullish_vol > bearish_vol * 1.2: sentiment = "BULLISH"
         elif bearish_vol > bullish_vol * 1.2: sentiment = "BEARISH"
@@ -172,6 +180,12 @@ def log_to_csv(filepath, date_str, ticker, dp_data, gex_data):
         if not file_exists:
             writer.writeheader()
         writer.writerow(row)
+        
+    try:
+        from core.sqlite_layer import append_row
+        append_row('equities_darkpool_gex_ledger', row)
+    except Exception as e:
+        print(f"⚠️ SQLite dual-write failed for institutional_scanner: {e}")
 
 def run_institutional_scan():
     today_str = datetime.now().strftime("%Y-%m-%d %H:%M")

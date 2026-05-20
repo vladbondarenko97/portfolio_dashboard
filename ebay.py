@@ -172,6 +172,13 @@ def log_arbitrage_ledger(cheapest_cost, avg_cost, comex_spot, item_count):
             item_count
         ]
         writer.writerow(row)
+        
+        try:
+            row_dict = dict(zip(headers, row))
+            from core.sqlite_layer import append_row
+            append_row('physical_arbitrage_ledger', row_dict)
+        except Exception as e:
+            print(f"⚠️ SQLite dual-write failed for ebay.py: {e}")
 
 # --- 3. EXECUTION ENGINE ---
 if __name__ == "__main__":

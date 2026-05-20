@@ -123,6 +123,11 @@ def analyze_market():
         except:
             spot = 'unavailable'
 
+    # --- 4.5 BITCOIN & CRYPTO ---
+    btc_price = safe_get(tac_root, './/bitcoin_metrics/btc_price', 'unavailable')
+    sil_btc_ratio = safe_get(tac_root, './/bitcoin_metrics/silver_btc_ratio', 'unavailable')
+    gold_btc_ratio = safe_get(tac_root, './/bitcoin_metrics/gold_btc_ratio', 'unavailable')
+
     # --- 5. OPTIONS & SENTIMENT ---
     pc_nodes = dash_root.findall('.//sp500_put_call_flow/day')
     if pc_nodes:
@@ -308,8 +313,14 @@ def analyze_market():
                 largest_block = int(blocks_1d['size'].max())
                 avg_block_price = float(total_notional / total_block_volume) if total_block_volume > 0 else 0.0
                 
-                bullish_vol = int(blocks_1d[blocks_1d['side'] == 'A']['size'].sum())
-                bearish_vol = int(blocks_1d[blocks_1d['side'] == 'B']['size'].sum())
+                # VWAP Tick Rule Heuristic
+                bullish_vol = int(blocks_1d[(blocks_1d['side'] == 'A') | ((blocks_1d['side'].isin(['N', 'UNK'])) & (blocks_1d['price'] >= avg_block_price))]['size'].sum())
+                bearish_vol = int(blocks_1d[(blocks_1d['side'] == 'B') | ((blocks_1d['side'].isin(['N', 'UNK'])) & (blocks_1d['price'] < avg_block_price))]['size'].sum())
+                
+                # Add fallback just in case 'side' format varies in pandas
+                if bullish_vol == 0 and bearish_vol == 0 and not blocks_1d.empty:
+                    bullish_vol = int(blocks_1d[blocks_1d['price'] >= avg_block_price]['size'].sum())
+                    bearish_vol = int(blocks_1d[blocks_1d['price'] < avg_block_price]['size'].sum())
                 
                 if bullish_vol > bearish_vol * 1.2: sentiment = "BULLISH"
                 elif bearish_vol > bullish_vol * 1.2: sentiment = "BEARISH"
@@ -863,6 +874,11 @@ def analyze_market():
 📉 S&P 500 OPTIONS FLOW
   - Put/Call Ratio: {pc_ratio:.2f} ({pc_status})
   - VIX (Volatility): {vix} ({vix_change})
+
+₿ DIGITAL GOLD & METALS RATIOS
+  - Bitcoin Price: {btc_price}
+  - Silver/BTC Ratio: {sil_btc_ratio} oz per BTC
+  - Gold/BTC Ratio: {gold_btc_ratio} oz per BTC
 
 🧠 SILVER DIVERGENCE
   - Institutions: {inst_level:.2f} [{inst_status}]

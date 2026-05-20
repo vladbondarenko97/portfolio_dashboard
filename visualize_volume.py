@@ -52,7 +52,7 @@ def fetch_market_prices():
     """Fetches global snapshots using GoldAPI for Spot, Yahoo for SLV/COMEX, and AKShare for SGE."""
     data = {
         "SLV": {"price": 0.0, "change": 0.0},
-        "SIH26": {"price": 0.0, "change": 0.0},
+        "SI_F": {"price": 0.0, "change": 0.0},
         "SPOT": {"price": 0.0, "change": 0.0},
         "SHFE": {"price": 0.0, "change": 0.0, "usd_oz": 0.0}, # We keep the key name "SHFE" for compatibility
         "USDCNY": 7.22 
@@ -62,8 +62,8 @@ def fetch_market_prices():
     # 1. SLV ETF (Yahoo)
     data["SLV"]["price"], data["SLV"]["change"] = get_last_valid_price("SLV")
 
-    # 2. COMEX March 2026 (Yahoo)
-    data["SIH26"]["price"], data["SIH26"]["change"] = get_last_valid_price("SIH26.CMX")
+    # 2. COMEX Continuous Silver (Yahoo)
+    data["SI_F"]["price"], data["SI_F"]["change"] = get_last_valid_price("SI=F")
 
     # 3. SPOT SILVER (GoldAPI.io)
     try:
@@ -202,6 +202,64 @@ def create_charts(df, suffix, title_suffix, inv_df=None):
             plt.savefig(os.path.join(DAILY_DIR, f'chart6_comex_inventory_{suffix}.png'))
             plt.close()
 
+def create_crypto_charts():
+    try:
+        import sqlite3
+        from config import DB_PATH
+        conn = sqlite3.connect(DB_PATH)
+        df = pd.read_sql("SELECT * FROM crypto_metrics_history ORDER BY Date ASC", conn)
+        conn.close()
+        
+        if df.empty:
+            return
+            
+        df['Date'] = pd.to_datetime(df['Date'])
+        
+        def plot_ratios_and_prices(data, suffix, title_suffix):
+            # Chart 7: Crypto Ratios
+            fig, ax1 = plt.subplots(figsize=(14, 7))
+            ax1.set_title(f'Digital Gold: Bitcoin / Metals Ratios {title_suffix}', fontsize=16, fontweight='bold')
+            ax1.plot(data['Date'], data['Silver_BTC_Ratio'], color='darkblue', label='Silver/BTC Ratio', linewidth=2)
+            ax1.set_ylabel('Ounces of Silver per BTC', color='darkblue')
+            
+            ax2 = ax1.twinx()
+            ax2.plot(data['Date'], data['Gold_BTC_Ratio'], color='gold', label='Gold/BTC Ratio', linewidth=2)
+            ax2.set_ylabel('Ounces of Gold per BTC', color='gold')
+            
+            lines_1, labels_1 = ax1.get_legend_handles_labels()
+            lines_2, labels_2 = ax2.get_legend_handles_labels()
+            ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc='upper left')
+            
+            plt.tight_layout()
+            plt.savefig(os.path.join(DAILY_DIR, f'chart7_crypto_ratios_{suffix}.png'))
+            plt.close()
+            
+            # Chart 8: Metals Prices
+            fig, ax1 = plt.subplots(figsize=(14, 7))
+            ax1.set_title(f'Metals Spot Prices {title_suffix}', fontsize=16, fontweight='bold')
+            ax1.plot(data['Date'], data['Silver_Price'], color='darkblue', label='Silver Price', linewidth=2)
+            ax1.set_ylabel('Silver Price (USD)', color='darkblue')
+            
+            ax2 = ax1.twinx()
+            ax2.plot(data['Date'], data['Gold_Price'], color='gold', label='Gold Price', linewidth=2)
+            ax2.set_ylabel('Gold Price (USD)', color='gold')
+            
+            lines_1, labels_1 = ax1.get_legend_handles_labels()
+            lines_2, labels_2 = ax2.get_legend_handles_labels()
+            ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc='upper left')
+            
+            plt.tight_layout()
+            plt.savefig(os.path.join(DAILY_DIR, f'chart8_metals_price_{suffix}.png'))
+            plt.close()
+
+        plot_ratios_and_prices(df, "1y", "(1 Year)")
+        
+        df_30d = df.tail(30).copy() if len(df) > 30 else df.copy()
+        plot_ratios_and_prices(df_30d, "30d", "(30 Days)")
+        print("✅ Crypto charts generated successfully.")
+    except Exception as e:
+        print(f"⚠️ Error generating crypto charts: {e}")
+
 def generate_dashboard_charts(df, inventory_df, tactical_text=""):
     if df is None or df.empty: return
     df['Date'] = pd.to_datetime(df['Date'])
@@ -210,6 +268,9 @@ def generate_dashboard_charts(df, inventory_df, tactical_text=""):
     create_charts(df, "30d", "(30-Day Trend)", inventory_df)
     unique_dates = df['Date'].unique()
     create_charts(df[df['Date'].isin(unique_dates[-7:])].copy(), "7d", "(7-Day Momentum)", inventory_df)
+    
+    # NEW: Generate Crypto Charts
+    create_crypto_charts()
 
     prices = fetch_market_prices()
     html_template = "volume_dashboard.html"
@@ -229,10 +290,10 @@ def generate_dashboard_charts(df, inventory_df, tactical_text=""):
         slv_pct = (prices['SLV']['change'] / prices['SLV']['price'] * 100) if prices['SLV']['price'] else 0.0
         html = html.replace("{{SLV_PCT}}", f"{slv_pct:+.2f}%")
 
-        v, c = get_format(prices['SIH26']['change'], "$")
-        html = html.replace("{{SIH26_PRICE}}", f"${prices['SIH26']['price']:,.2f}")
+        v, c = get_format(prices['SI_F']['change'], "$")
+        html = html.replace("{{SIH26_PRICE}}", f"${prices['SI_F']['price']:,.2f}")
         html = html.replace("{{SIH26_CHANGE}}", v).replace("{{SIH26_CLASS}}", c)
-        sih26_pct = (prices['SIH26']['change'] / prices['SIH26']['price'] * 100) if prices['SIH26']['price'] else 0.0
+        sih26_pct = (prices['SI_F']['change'] / prices['SI_F']['price'] * 100) if prices['SI_F']['price'] else 0.0
         html = html.replace("{{SIH26_PCT}}", f"{sih26_pct:+.2f}%")
 
         v, c = get_format(prices['SPOT']['change'], "$")

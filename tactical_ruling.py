@@ -341,31 +341,8 @@ def get_shfe_silver_premium():
 
 # 7 & 8. GEX and DIX (SqueezeMetrics, scrape if possible)
 def get_gex_dix():
-    gex, dix = None, None
-    # Try public CSVs or GitHub for GEX/DIX (example: SqueezeMetrics public CSV, if available)
-    # Example placeholder: https://raw.githubusercontent.com/SqueezeMetrics/monitor/main/gex.csv
-    gex, dix = None, None
-    gex_url = "https://raw.githubusercontent.com/SqueezeMetrics/monitor/main/gex.csv"
-    dix_url = "https://raw.githubusercontent.com/SqueezeMetrics/monitor/main/dix.csv"
-    try:
-        r = api_client.get(gex_url, timeout=10)
-        lines = r.text.splitlines()
-        if len(lines) > 1:
-            last = lines[-1].split(',')
-            gex = float(last[1])
-            print("[GEX] Source: SqueezeMetrics GitHub CSV")
-    except Exception as e:
-        print(f"Error fetching GEX from GitHub CSV: {e}")
-    try:
-        r = api_client.get(dix_url, timeout=10)
-        lines = r.text.splitlines()
-        if len(lines) > 1:
-            last = lines[-1].split(',')
-            dix = float(last[1])
-            print("[DIX] Source: SqueezeMetrics GitHub CSV")
-    except Exception as e:
-        print(f"Error fetching DIX from GitHub CSV: {e}")
-    return gex, dix
+    # SqueezeMetrics GitHub is obsolete. Return None.
+    return None, None
 
 # 9. Credit Spreads (ICE BofA High Yield OAS) with Time Deltas
 def get_credit_spread():
@@ -605,6 +582,14 @@ def log_macro_ledger(ledger_data):
             row.append(val if val is not None else "NaN")
             
         writer.writerow(row)
+        
+        # Dual-write to SQLite
+        try:
+            row_dict = dict(zip(headers, row))
+            from core.sqlite_layer import append_row
+            append_row('macro_master_ledger', row_dict)
+        except Exception as e:
+            print(f"[LEDGER] Warning: SQLite dual-write failed: {e}")
 
 # Add this function to your tactical_ruling.py
 def get_macro_calendar_native():
@@ -812,6 +797,35 @@ def print_tactical_ruling(inventory_df=None):
     gsr, gold_price, silver_price = get_gsr()
     ET.SubElement(root, "gold_silver_ratio").text = f"{gsr:.2f}" if gsr else "unavailable"
     ET.SubElement(root, "gold_price").text = f"{gold_price:.2f}" if gold_price else "unavailable"
+
+    # --- NEW: SECTION 8.5 BITCOIN & METALS RATIOS ---
+    btc_price = get_yf_price("BTC-USD")
+    btc_elem = ET.SubElement(root, "bitcoin_metrics")
+    if btc_price and silver_price and gold_price:
+        sil_btc_ratio = btc_price / silver_price
+        gold_btc_ratio = btc_price / gold_price
+        
+        ET.SubElement(btc_elem, "btc_price").text = f"${btc_price:,.2f}"
+        ET.SubElement(btc_elem, "silver_btc_ratio").text = f"{sil_btc_ratio:.2f}"
+        ET.SubElement(btc_elem, "gold_btc_ratio").text = f"{gold_btc_ratio:.2f}"
+        
+        # Save to SQLite
+        try:
+            from core.sqlite_layer import append_row
+            today_str_sql = datetime.now().strftime('%Y-%m-%d')
+            crypto_row = {
+                "Date": today_str_sql,
+                "BTC_Price": btc_price,
+                "Silver_Price": silver_price,
+                "Gold_Price": gold_price,
+                "Silver_BTC_Ratio": sil_btc_ratio,
+                "Gold_BTC_Ratio": gold_btc_ratio
+            }
+            append_row("crypto_metrics_history", crypto_row)
+        except Exception as e:
+            print(f"Error saving crypto metrics to SQLite: {e}")
+    else:
+        ET.SubElement(btc_elem, "status").text = "unavailable"
 
     # 9. Institutional Positioning (GEX/DIX)
     gex, dix = get_gex_dix()

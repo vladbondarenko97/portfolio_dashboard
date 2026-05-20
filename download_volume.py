@@ -127,6 +127,15 @@ def download_latest_cme_files(num_files_to_get=30):
                 download = download_info.value
                 download.save_as(save_path)
                 
+                try:
+                    import pandas as pd
+                    from core.sqlite_layer import append_df
+                    df = pd.read_excel(save_path)
+                    df['source_date'] = date_str
+                    append_df('daily_volume', df)
+                except Exception as e:
+                    print(f"⚠️ SQLite dual-write failed for {filename}: {e}")
+                
                 print(f"✅ Successfully downloaded.\n")
                 downloads_completed += 1
                 time.sleep(1.5) 
